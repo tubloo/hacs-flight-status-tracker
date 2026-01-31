@@ -15,6 +15,7 @@ You can add flights with minimal inputs (airline code, flight number, date) and 
 - Manual flights are editable; provider-sourced flights are read-only.
 - On-demand refresh button/service.
 - Schedule provider and status provider can be set independently.
+- Optional auto-removal of landed/cancelled manual flights.
 
 ## Installation (HACS)
 1. Add this repository as a custom repository in HACS.
@@ -30,6 +31,7 @@ Key points:
 - **Status provider** is used for live status updates.
 - FR24 is great for status, but does not always return scheduled times. Use AirLabs or Aviationstack for schedule.
 - FR24 sandbox: enable **Use FR24 sandbox** and set the sandbox key.
+- **Auto-remove landed flights** is optional and applies only to manual flights.
 
 ### Required inputs when adding a flight
 ```
@@ -160,6 +162,16 @@ show_header_toggle: false
 entities:
   - entity: button.flight_dashboard_refresh_now
     name: Refresh now
+```
+
+### Remove Landed Flights Card (manual)
+```yaml
+type: entities
+title: Flight Dashboard
+show_header_toggle: false
+entities:
+  - entity: button.flight_dashboard_remove_landed
+    name: Remove landed flights
 ```
 
 ### Flight Status List Card (example)
@@ -295,6 +307,9 @@ Clear all manual flights.
 
 ### `flight_dashboard.refresh_now`
 Force a refresh of upcoming flights and status updates.
+
+### `flight_dashboard.prune_landed`
+Remove landed/cancelled manual flights. Optional `hours` delay after arrival.
 
 ## Notes
 - Schedule and status timestamps are stored as ISO strings (typically UTC). Convert at display time.

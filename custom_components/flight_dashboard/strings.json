@@ -32,6 +32,8 @@
           "include_past_hours": "Include past hours",
           "max_flights": "Max flights",
           "merge_tolerance_hours": "Merge tolerance (hours)",
+          "auto_prune_landed": "Auto-remove landed flights",
+          "prune_landed_hours": "Remove landed flights after (hours)",
           "status_provider": "Status provider",
           "schedule_provider": "Schedule provider",
           "status_ttl_minutes": "Status cache TTL (minutes)",

@@ -28,6 +28,7 @@ SERVICE_ADD_MANUAL_FLIGHT = "add_manual_flight"
 SERVICE_REMOVE_MANUAL_FLIGHT = "remove_manual_flight"
 SERVICE_CLEAR_MANUAL_FLIGHTS = "clear_manual_flights"
 SERVICE_REFRESH_NOW = "refresh_now"
+SERVICE_PRUNE_LANDED = "prune_landed"
 
 # Aliases some modules may import
 SERVICE_ADD = SERVICE_ADD_MANUAL_FLIGHT

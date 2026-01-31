@@ -17,6 +17,7 @@ from homeassistant.util import dt as dt_util
 from .const import DOMAIN, SIGNAL_MANUAL_FLIGHTS_UPDATED
 from .coordinator_agg import merge_segments
 from .providers.itinerary.manual import ManualItineraryProvider
+from .manual_store import async_remove_manual_flight
 from .status_manager import async_update_statuses
 from .tz_short import tz_short_name
 from .airport_tz import get_airport_tz
@@ -116,6 +117,8 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
         include_past = int(options.get("include_past_hours", 6))
         days_ahead = int(options.get("days_ahead", 30))
         max_flights = int(options.get("max_flights", 50))
+        auto_prune = bool(options.get("auto_prune_landed", False))
+        prune_hours = int(options.get("prune_landed_hours", 0))
 
         start = now - timedelta(hours=include_past)
         end = now + timedelta(days=days_ahead)
@@ -144,6 +147,32 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
             flights = flights[:max_flights]
 
         flights, next_refresh = await async_update_statuses(self.hass, options, flights)
+
+        # Optional: auto-remove landed/cancelled manual flights after arrival
+        if auto_prune:
+            cutoff = now - timedelta(hours=prune_hours)
+            removed_any = False
+            for f in flights:
+                if not isinstance(f, dict):
+                    continue
+                if (f.get("source") or "manual") != "manual":
+                    continue
+                status = (f.get("status_state") or "").lower()
+                if status not in ("landed", "cancelled"):
+                    continue
+                arr = (f.get("arr") or {})
+                arr_time = arr.get("actual") or arr.get("estimated") or arr.get("scheduled")
+                if not isinstance(arr_time, str):
+                    continue
+                dt = dt_util.parse_datetime(arr_time)
+                if not dt:
+                    continue
+                dt = dt_util.as_utc(dt) if dt.tzinfo else dt_util.as_utc(dt_util.as_local(dt))
+                if dt <= cutoff:
+                    if await async_remove_manual_flight(self.hass, f.get("flight_key", "")):
+                        removed_any = True
+            if removed_any:
+                return
 
         for flight in flights:
             flight["editable"] = (flight.get("source") or "manual") == "manual"

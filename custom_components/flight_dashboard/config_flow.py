@@ -24,6 +24,8 @@ CONF_DAYS_AHEAD = "days_ahead"
 CONF_INCLUDE_PAST_HOURS = "include_past_hours"
 CONF_MAX_FLIGHTS = "max_flights"
 CONF_MERGE_TOLERANCE_HOURS = "merge_tolerance_hours"
+CONF_AUTO_PRUNE_LANDED = "auto_prune_landed"
+CONF_PRUNE_LANDED_HOURS = "prune_landed_hours"
 
 # Status options
 CONF_STATUS_PROVIDER = "status_provider"  # local|aviationstack|airlabs|opensky|flightradar24
@@ -55,6 +57,8 @@ DEFAULT_DAYS_AHEAD = 30
 DEFAULT_INCLUDE_PAST_HOURS = 6
 DEFAULT_MAX_FLIGHTS = 50
 DEFAULT_MERGE_TOLERANCE_HOURS = 6
+DEFAULT_AUTO_PRUNE_LANDED = False
+DEFAULT_PRUNE_LANDED_HOURS = 0
 
 DEFAULT_STATUS_PROVIDER = "flightradar24"
 DEFAULT_SCHEDULE_PROVIDER = "auto"
@@ -96,6 +100,8 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
             options[CONF_INCLUDE_PAST_HOURS] = user_input[CONF_INCLUDE_PAST_HOURS]
             options[CONF_MAX_FLIGHTS] = user_input[CONF_MAX_FLIGHTS]
             options[CONF_MERGE_TOLERANCE_HOURS] = user_input[CONF_MERGE_TOLERANCE_HOURS]
+            options[CONF_AUTO_PRUNE_LANDED] = bool(user_input.get(CONF_AUTO_PRUNE_LANDED, False))
+            options[CONF_PRUNE_LANDED_HOURS] = int(user_input.get(CONF_PRUNE_LANDED_HOURS, 0))
 
             # Status
             options[CONF_STATUS_PROVIDER] = user_input[CONF_STATUS_PROVIDER]
@@ -128,6 +134,8 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
         include_past = options.get(CONF_INCLUDE_PAST_HOURS, DEFAULT_INCLUDE_PAST_HOURS)
         max_flights = options.get(CONF_MAX_FLIGHTS, DEFAULT_MAX_FLIGHTS)
         tolerance = options.get(CONF_MERGE_TOLERANCE_HOURS, DEFAULT_MERGE_TOLERANCE_HOURS)
+        auto_prune = options.get(CONF_AUTO_PRUNE_LANDED, DEFAULT_AUTO_PRUNE_LANDED)
+        prune_hours = options.get(CONF_PRUNE_LANDED_HOURS, DEFAULT_PRUNE_LANDED_HOURS)
 
         status_provider = options.get(CONF_STATUS_PROVIDER, DEFAULT_STATUS_PROVIDER)
         schedule_provider = options.get(CONF_SCHEDULE_PROVIDER, DEFAULT_SCHEDULE_PROVIDER)
@@ -211,6 +219,8 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Required(CONF_INCLUDE_PAST_HOURS, default=include_past): vol.All(int, vol.Clamp(min=0, max=72)),
                 vol.Required(CONF_MAX_FLIGHTS, default=max_flights): vol.All(int, vol.Clamp(min=1, max=200)),
                 vol.Required(CONF_MERGE_TOLERANCE_HOURS, default=tolerance): vol.All(int, vol.Clamp(min=0, max=48)),
+                vol.Optional(CONF_AUTO_PRUNE_LANDED, default=auto_prune): bool,
+                vol.Optional(CONF_PRUNE_LANDED_HOURS, default=prune_hours): vol.All(int, vol.Clamp(min=0, max=168)),
             }
         )
 

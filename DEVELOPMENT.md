@@ -7,6 +7,7 @@
 - **Status**: `status_manager.py` applies cached status and schedules smart refreshes.
 - **Sensor**: `sensor.py` exposes the unified flight list in attributes.
 - **Refresh now**: `flight_dashboard.refresh_now` triggers an immediate rebuild.
+- **Auto prune**: optional removal of landed/cancelled manual flights in `sensor.py`.
 
 ## Testing
 Recommended quick checks:
