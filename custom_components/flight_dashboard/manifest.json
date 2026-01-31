@@ -1,0 +1,11 @@
+{
+  "domain": "flight_dashboard",
+  "name": "Flight Dashboard",
+  "version": "0.1.0",
+  "documentation": "https://github.com/tubloo/hass-integration-flight-dashboard",
+  "issue_tracker": "https://github.com/tubloo/hass-integration-flight-dashboard/issues",
+  "codeowners": ["@tubloo"],
+  "requirements": ["requests", "requests-oauthlib"],
+  "config_flow": true,
+  "iot_class": "cloud_polling"
+}

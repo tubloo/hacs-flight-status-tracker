@@ -1,0 +1,53 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Flight Dashboard",
+        "description": "Set up the Flight Dashboard integration."
+      },
+      "init": {
+        "title": "Options",
+        "description": "Configure providers, time windows, and API keys."
+      },
+      "tripit_verifier": {
+        "title": "TripIt authorization",
+        "description": "Enter the TripIt verifier PIN from the authorization page."
+      }
+    },
+    "error": {
+      "tripit_access_token_failed": "TripIt authorization failed. Try again.",
+      "tripit_connection_test_failed": "TripIt authorization succeeded but the connection test failed.",
+      "tripit_request_token_failed": "Could not request a TripIt token.",
+      "tripit_missing_consumer_keys": "TripIt consumer key/secret are required."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Flight Dashboard options",
+        "description": "Select itinerary sources, schedule lookup provider, and status provider.",
+        "data": {
+          "itinerary_providers": "Itinerary providers",
+          "days_ahead": "Days ahead",
+          "include_past_hours": "Include past hours",
+          "max_flights": "Max flights",
+          "merge_tolerance_hours": "Merge tolerance (hours)",
+          "status_provider": "Status provider",
+          "schedule_provider": "Schedule provider",
+          "status_ttl_minutes": "Status cache TTL (minutes)",
+          "aviationstack_access_key": "Aviationstack API key",
+          "airlabs_api_key": "AirLabs API key",
+          "opensky_username": "OpenSky username",
+          "opensky_password": "OpenSky password",
+          "fr24_api_key": "Flightradar24 API key",
+          "fr24_sandbox_key": "Flightradar24 sandbox API key",
+          "fr24_use_sandbox": "Use FR24 sandbox",
+          "fr24_api_version": "FR24 API version",
+          "tripit_consumer_key": "TripIt consumer key",
+          "tripit_consumer_secret": "TripIt consumer secret",
+          "tripit_authorize_now": "Authorize TripIt now"
+        }
+      }
+    }
+  }
+}

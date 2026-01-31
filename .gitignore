@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.idea/
+.vscode/
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+.storage/
+secrets.yaml
+*.env
+.env
+*.key
+*.pem
+*.crt

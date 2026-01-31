@@ -1,0 +1,43 @@
+{
+  "AI157|2026-02-15": {
+    "schema_version": 3,
+    "source": "mock",
+    "flight_key": null,
+    "airline_code": "AI",
+    "flight_number": "157",
+    "airline_name": "Air India",
+    "airline_logo_url": "https://pics.avs.io/64/64/AI.png",
+    "aircraft_type": "B788",
+    "travellers": [],
+    "status_state": "scheduled",
+    "notes": null,
+    "dep": {
+      "airport": {
+        "iata": "DEL",
+        "name": "Indira Gandhi International Airport",
+        "city": "Delhi",
+        "tz": "Asia/Kolkata",
+        "tz_short": "IST"
+      },
+      "scheduled": "2026-02-15T08:30:00+00:00",
+      "estimated": null,
+      "actual": null,
+      "terminal": "3",
+      "gate": "24"
+    },
+    "arr": {
+      "airport": {
+        "iata": "CPH",
+        "name": "Copenhagen Airport",
+        "city": "Copenhagen",
+        "tz": "Europe/Copenhagen",
+        "tz_short": "CET"
+      },
+      "scheduled": "2026-02-15T14:05:00+00:00",
+      "estimated": null,
+      "actual": null,
+      "terminal": "3",
+      "gate": "A12"
+    }
+  }
+}

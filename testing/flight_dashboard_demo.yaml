@@ -1,0 +1,76 @@
+input_text:
+  fd_flight_query:
+    name: FD Flight (e.g. AI 157)
+    icon: mdi:airplane-search
+  fd_travellers:
+    name: FD Travellers (comma-separated)
+    icon: mdi:account-multiple
+  fd_notes:
+    name: FD Notes
+    icon: mdi:note-text
+
+input_datetime:
+  fd_flight_date:
+    name: FD Flight date (local)
+    has_date: true
+    has_time: false
+    icon: mdi:calendar
+
+template:
+  - binary_sensor:
+      - name: FD Preview Ready
+        state: "{{ is_state('sensor.flight_dashboard_add_preview', 'ready') }}"
+        icon: "{{ 'mdi:check-circle' if is_state('sensor.flight_dashboard_add_preview', 'ready') else 'mdi:clock-outline' }}"
+
+script:
+  fd_preview_flight:
+    alias: "Flight Dashboard: Preview flight"
+    mode: single
+    sequence:
+      - variables:
+          q: "{{ states('input_text.fd_flight_query') | trim }}"
+          date: "{{ states('input_datetime.fd_flight_date') }}"
+          travellers_raw: "{{ states('input_text.fd_travellers') | trim }}"
+          travellers: >-
+            {% if not travellers_raw %} [] {% else %}
+            {{ travellers_raw.split(',') | map('trim') | select('string') | list }}
+            {% endif %}
+          notes: "{{ states('input_text.fd_notes') | trim }}"
+      - service: flight_dashboard.preview_flight
+        data:
+          query: "{{ q }}"
+          date: "{{ date }}"
+          travellers: "{{ travellers }}"
+          notes: "{{ notes if notes else none }}"
+
+  fd_confirm_add:
+    alias: "Flight Dashboard: Confirm add preview"
+    mode: single
+    sequence:
+      - service: flight_dashboard.confirm_add
+
+  fd_clear_preview:
+    alias: "Flight Dashboard: Clear preview"
+    mode: single
+    sequence:
+      - service: flight_dashboard.clear_preview
+
+  fd_refresh_now:
+    alias: "Flight Dashboard: Refresh now"
+    mode: single
+    sequence:
+      - service: flight_dashboard.refresh_now
+
+  fd_remove_selected:
+    alias: "Flight Dashboard: Remove selected flight"
+    mode: single
+    sequence:
+      - variables:
+          selected: "{{ states('select.flight_dashboard_remove_flight') }}"
+          flight_key: "{{ selected.split(' | ')[0] if ' | ' in selected else '' }}"
+      - choose:
+          - conditions: "{{ flight_key | length > 0 }}"
+            sequence:
+              - service: flight_dashboard.remove_manual_flight
+                data:
+                  flight_key: "{{ flight_key }}"

@@ -1,0 +1,72 @@
+preview_flight:
+  name: Preview flight
+  description: Fetch schedule/status for a flight+date and store as server-side preview (to confirm add later).
+  fields:
+    query:
+      required: false
+      selector:
+        text:
+    airline:
+      required: false
+      selector:
+        text:
+    flight_number:
+      required: false
+      selector:
+        text:
+    date:
+      required: true
+      selector:
+        date:
+    travellers:
+      required: false
+      selector:
+        object:
+    notes:
+      required: false
+      selector:
+        text:
+
+add_flight:
+  name: Add flight
+  description: Add a flight using minimal inputs (airline, flight number, date). Uses configured provider to enrich.
+  fields:
+    query:
+      required: false
+      selector:
+        text:
+    airline:
+      required: false
+      selector:
+        text:
+    flight_number:
+      required: false
+      selector:
+        text:
+    date:
+      required: true
+      selector:
+        date:
+    travellers:
+      required: false
+      selector:
+        object:
+    notes:
+      required: false
+      selector:
+        text:
+
+confirm_add:
+  name: Confirm add
+  description: Add the currently previewed flight to manual flights.
+  fields: {}
+
+clear_preview:
+  name: Clear preview
+  description: Clear the current preview.
+  fields: {}
+
+refresh_now:
+  name: Refresh now
+  description: Force a refresh of upcoming flights and status updates.
+  fields: {}
