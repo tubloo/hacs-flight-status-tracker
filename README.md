@@ -1,10 +1,5 @@
 # Flight Dashboard (Home Assistant)
 
-[![HACS](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://hacs.xyz/)
-[![Hassfest](https://github.com/tubloo/hass-integration-flight-dashboard/actions/workflows/hassfest.yaml/badge.svg)](https://github.com/tubloo/hass-integration-flight-dashboard/actions/workflows/hassfest.yaml)
-[![HACS Action](https://github.com/tubloo/hass-integration-flight-dashboard/actions/workflows/hacs.yaml/badge.svg)](https://github.com/tubloo/hass-integration-flight-dashboard/actions/workflows/hacs.yaml)
-[![Lint](https://github.com/tubloo/hass-integration-flight-dashboard/actions/workflows/lint.yaml/badge.svg)](https://github.com/tubloo/hass-integration-flight-dashboard/actions/workflows/lint.yaml)
-
 Flight Dashboard is a Home Assistant integration that tracks upcoming flights and their status.
 You can add flights with minimal inputs (airline code, flight number, date) and let the integration enrich the details using provider APIs.
 
@@ -17,11 +12,10 @@ You can add flights with minimal inputs (airline code, flight number, date) and 
 - Schedule provider and status provider can be set independently.
 - Optional auto-removal of landed/cancelled manual flights.
 
-## Installation (HACS)
-1. Add this repository as a custom repository in HACS.
-2. Install **Flight Dashboard**.
-3. Restart Home Assistant.
-4. Add the integration from **Settings → Devices & Services**.
+## Installation (Manual)
+1. Copy `custom_components/flight_dashboard` into your Home Assistant `config/custom_components/` directory.
+2. Restart Home Assistant.
+3. Add the integration from **Settings → Devices & Services**.
 
 ## Configuration
 All configuration is done via the UI (config flow).
