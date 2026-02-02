@@ -42,7 +42,7 @@ def _pick_str(*vals: Any) -> str | None:
     return None
 
 
-_TZ_RE = re.compile(r"(Z|[+-]\\d{2}:\\d{2})$")
+_TZ_RE = re.compile(r"(Z|[+-]\d{2}:\d{2})$")
 
 
 def _has_tz(s: str | None) -> bool:
@@ -55,8 +55,14 @@ def _normalize_iso_in_tz(val: str | None, tzname: str | None) -> str | None:
     """Normalize a naive ISO string using an airport timezone, return UTC ISO."""
     if not val:
         return None
+    if isinstance(val, str) and "+00:00+00:00" in val:
+        val = val.replace("+00:00+00:00", "+00:00")
     if _has_tz(val):
-        return val
+        try:
+            dt = datetime.fromisoformat(val.replace("Z", "+00:00"))
+            return dt_util.as_utc(dt).isoformat()
+        except Exception:
+            return val
     if not tzname:
         return val
     try:

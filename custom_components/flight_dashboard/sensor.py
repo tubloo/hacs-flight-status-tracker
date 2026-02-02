@@ -19,11 +19,10 @@ from homeassistant.util import dt as dt_util
 from .const import DOMAIN, SIGNAL_MANUAL_FLIGHTS_UPDATED, EVENT_UPDATED
 from .coordinator_agg import merge_segments
 from .providers.itinerary.manual import ManualItineraryProvider
-from .manual_store import async_remove_manual_flight
+from .manual_store import async_remove_manual_flight, async_update_manual_flight
 from .status_manager import async_update_statuses
 from .tz_short import tz_short_name
-from .airport_tz import get_airport_tz, get_airport_info
-from .directory import get_airport, get_airline
+from .directory import get_airport, get_airline, warm_directory_cache
 from .fr24_client import FR24Client, FR24RateLimitError, FR24Error
 from .rate_limit import get_blocks, is_blocked, get_block_until, get_block_reason, set_block
 from .selected import get_selected_flight, get_flight_position
@@ -168,6 +167,9 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
 
         flights = merge_segments(segments)
 
+        # Warm directory cache on first run using known flights
+        await warm_directory_cache(self.hass, options, flights)
+
         # Filter by include_past_hours using departure local time (airport tz when available)
         def _as_tz(dt, tzname: str | None):
             if not tzname:
@@ -253,38 +255,40 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
                     if not flight.get("airline_logo_url"):
                         flight["airline_logo_url"] = airline.get("logo") or flight.get("airline_logo_url")
 
+            updates: dict[str, Any] = {}
             if dep_air.get("iata") and (not dep_air.get("name") or not dep_air.get("city") or not dep_air.get("tz")):
                 airport = await get_airport(self.hass, options, dep_air.get("iata"))
                 if airport:
-                    dep_air["name"] = dep_air.get("name") or airport.get("name")
-                    dep_air["city"] = dep_air.get("city") or airport.get("city")
-                    dep_air["tz"] = dep_air.get("tz") or airport.get("tz")
+                    if not dep_air.get("name") and airport.get("name"):
+                        dep_air["name"] = airport.get("name")
+                        updates["dep_airport_name"] = airport.get("name")
+                    if not dep_air.get("city") and airport.get("city"):
+                        dep_air["city"] = airport.get("city")
+                        updates["dep_airport_city"] = airport.get("city")
+                    if not dep_air.get("tz") and airport.get("tz"):
+                        dep_air["tz"] = airport.get("tz")
+                        updates["dep_airport_tz"] = airport.get("tz")
 
             if arr_air.get("iata") and (not arr_air.get("name") or not arr_air.get("city") or not arr_air.get("tz")):
                 airport = await get_airport(self.hass, options, arr_air.get("iata"))
                 if airport:
-                    arr_air["name"] = arr_air.get("name") or airport.get("name")
-                    arr_air["city"] = arr_air.get("city") or airport.get("city")
-                    arr_air["tz"] = arr_air.get("tz") or airport.get("tz")
+                    if not arr_air.get("name") and airport.get("name"):
+                        arr_air["name"] = airport.get("name")
+                        updates["arr_airport_name"] = airport.get("name")
+                    if not arr_air.get("city") and airport.get("city"):
+                        arr_air["city"] = airport.get("city")
+                        updates["arr_airport_city"] = airport.get("city")
+                    if not arr_air.get("tz") and airport.get("tz"):
+                        arr_air["tz"] = airport.get("tz")
+                        updates["arr_airport_tz"] = airport.get("tz")
 
-            if not dep_air.get("tz"):
-                dep_air["tz"] = get_airport_tz(dep_air.get("iata"), options)
-            if not arr_air.get("tz"):
-                arr_air["tz"] = get_airport_tz(arr_air.get("iata"), options)
+            # Persist directory enrichment for manual flights
+            if updates and (flight.get("source") or "manual") == "manual":
+                fk = flight.get("flight_key")
+                if fk:
+                    await async_update_manual_flight(self.hass, fk, updates)
 
-            # Fill basic name/city/tz from static map if still missing
-            if dep_air.get("iata") and (not dep_air.get("name") or not dep_air.get("city") or not dep_air.get("tz")):
-                info = get_airport_info(dep_air.get("iata"), options)
-                if info:
-                    dep_air["name"] = dep_air.get("name") or info.get("name")
-                    dep_air["city"] = dep_air.get("city") or info.get("city")
-                    dep_air["tz"] = dep_air.get("tz") or info.get("tz")
-            if arr_air.get("iata") and (not arr_air.get("name") or not arr_air.get("city") or not arr_air.get("tz")):
-                info = get_airport_info(arr_air.get("iata"), options)
-                if info:
-                    arr_air["name"] = arr_air.get("name") or info.get("name")
-                    arr_air["city"] = arr_air.get("city") or info.get("city")
-                    arr_air["tz"] = arr_air.get("tz") or info.get("tz")
+            # No static fallback: only use directory providers / cache
 
             if dep_air.get("tz") and not dep_air.get("tz_short"):
                 dep_air["tz_short"] = tz_short_name(dep_air.get("tz"), dep_sched)

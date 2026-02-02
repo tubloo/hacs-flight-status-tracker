@@ -45,6 +45,7 @@ homeassistant:
 This will create:
 - `input_text.fd_airline`
 - `input_text.fd_flight_number`
+- `input_text.fd_dep_airport` (optional, for disambiguation)
 - `input_text.fd_travellers`
 - `input_text.fd_notes`
 - `input_datetime.fd_flight_date`
@@ -132,7 +133,7 @@ You can add flights with minimal inputs (airline code, flight number, date) and 
 - On-demand refresh button/service.
 - Schedule provider and status provider can be set independently.
 - Optional auto-removal of landed/cancelled manual flights.
-- Optional airport/airline directory cache (default 180 days).
+- Optional airport/airline directory cache (default 90 days).
 
 ## Installation (Manual)
 1. Copy `custom_components/flight_dashboard` into your Home Assistant `config/custom_components/` directory.
@@ -149,10 +150,15 @@ Key points:
 - FR24 sandbox: enable **Use FR24 sandbox** and set the sandbox key.
 - **Auto-remove landed flights** is optional and applies only to manual flights.
 - **Delay grace (minutes)** controls when a flight is considered delayed (default 10 min).
+- **Preview displays scheduled times only** (est/act appear after the flight is added).
 
 ### Required inputs when adding a flight
 ```
 airline, flight_number, date
+```
+Optional:
+```
+dep_airport
 ```
 
 ### Delay Status Logic
@@ -192,8 +198,10 @@ Logic:
 
 ## Directory Cache
 - Enable **Cache airports/airlines** to store directory lookups in `.storage`.
-- **Directory cache TTL (days)** controls refresh age (default 180).
+- **Directory cache TTL (days)** controls refresh age (default 90).
 - Cache is only used when a field is missing (name, city, tz, airline name/logo).
+- If the cache and provider miss, the integration falls back to OpenFlights datasets
+  (airlines.dat / airports.dat) on-demand and stores results in the cache.
 
 ## Lovelace Examples
 
@@ -433,29 +441,43 @@ views:
                 name: Flight number (e.g. 236)
               - entity: input_datetime.fd_flight_date
                 name: Date
+              - entity: input_text.fd_dep_airport
+                name: Departure airport (optional, e.g. AMD)
               - entity: input_text.fd_travellers
                 name: Travellers (optional)
               - entity: input_text.fd_notes
                 name: Notes (optional)
           - type: custom:mushroom-template-card
+            picture: >
+              {% set p = state_attr('sensor.flight_dashboard_add_preview','preview') or {} %}
+              {% set f = p.get('flight') or {} %}
+              {% if f.get('airline_logo_url') %}
+                {{ f.get('airline_logo_url') }}
+              {% else %}
+                https://pics.avs.io/64/64/{{ (f.get('airline_code') or '') | upper }}.png
+              {% endif %}
             primary: >
               {% set p = state_attr('sensor.flight_dashboard_add_preview','preview') or {} %}
               {% set f = p.get('flight') or {} %}
               {% set dep = f.get('dep') or {} %}
               {% set arr = f.get('arr') or {} %}
-              {% if f and dep and arr %}
-                {% set dep_t = dep.get('estimated') or dep.get('scheduled') %}
-                {% set arr_t = arr.get('estimated') or arr.get('scheduled') %}
-                {% set dep_hm = dep_t and (as_datetime(dep_t).strftime('%H:%M')) %}
-                {% set arr_hm = arr_t and (as_datetime(arr_t).strftime('%H:%M')) %}
-                {{ f.get('airline_code','—') }} {{ f.get('flight_number','—') }} ·
-                {{ (dep.get('airport') or {}).get('iata') or '—' }} ({{ dep_hm or '—' }})
-                → {{ (arr.get('airport') or {}).get('iata') or '—' }} ({{ arr_hm or '—' }})
-              {% else %}
-                No preview
-              {% endif %}
+              {% set dep_air = dep.get('airport') or {} %}
+              {% set arr_air = arr.get('airport') or {} %}
+              {% set dep_t = dep.get('scheduled_local') or dep.get('scheduled') %}
+              {% set arr_t = arr.get('scheduled_local') or arr.get('scheduled') %}
+              {% set dep_hm = dep_t and dep_t[11:16] %}
+              {% set arr_hm = arr_t and arr_t[11:16] %}
+              {% set dep_date = dep_t and dep_t[0:10] %}
+              {% set arr_date = arr_t and arr_t[0:10] %}
+              {% set dep_date_fmt = dep_date and (as_datetime(dep_date) | timestamp_custom('%d %b', false)) %}
+              {% set arr_date_fmt = arr_date and (as_datetime(arr_date) | timestamp_custom('%d %b', false)) %}
+              {{ f.get('airline_code','—') }} {{ f.get('flight_number','—') }} ·
+              {{ dep_air.get('iata') or '—' }} ({{ dep_hm or '—' }} {{ dep_air.get('tz_short') or '' }})
+              → {{ arr_air.get('iata') or '—' }} ({{ arr_hm or '—' }} {{ arr_air.get('tz_short') or '' }}{% if arr_date_fmt and dep_date_fmt and arr_date_fmt != dep_date_fmt %} · {{ arr_date_fmt }}{% endif %})
             secondary: >
               {% set p = state_attr('sensor.flight_dashboard_add_preview','preview') or {} %}
+              {% set f = p.get('flight') or {} %}
+              {% set airline_name = f.get('airline_name') or f.get('airline_code') or '—' %}
               {% if p.get('hint') %}
                 ❗ {{ p.get('hint') }}
               {% elif p.get('warning') %}
@@ -464,11 +486,7 @@ views:
                 ❌ {{ p.get('error') }}
               {% else %}
                 Run Preview
-              {% endif %} Ready to add: {{ p.get('ready') }}
-            picture: >
-              {% set p = state_attr('sensor.flight_dashboard_add_preview','preview') or {} %}
-              {% set f = p.get('flight') or {} %}
-              {% if f %}{{ f.get('airline_logo_url') }}{% endif %}
+              {% endif %} · Airline: {{ airline_name }} · Ready: {{ p.get('ready') }}
             icon: mdi:airplane
             layout: horizontal
             multiline_secondary: true

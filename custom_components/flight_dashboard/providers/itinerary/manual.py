@@ -133,6 +133,9 @@ class ManualItineraryProvider:
                     "status_state": raw.get("status_state") or (status or {}).get("state") or "unknown",
                     "notes": raw.get("notes"),
                     "status": status,
+                    # expose stored schedule fields so backfill logic doesn't overwrite them
+                    "scheduled_departure": dep_sched_iso,
+                    "scheduled_arrival": _as_utc_iso(arr_sched_dt),
                     "dep": {
                         "airport": {
                             "iata": dep_iata,

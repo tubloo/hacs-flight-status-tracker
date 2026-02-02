@@ -62,7 +62,7 @@ def _iso(dt: datetime | None) -> str | None:
     return dt.astimezone(timezone.utc).isoformat()
 
 
-_TZ_RE = re.compile(r"(Z|[+-]\\d{2}:\\d{2})$")
+_TZ_RE = re.compile(r"(Z|[+-]\d{2}:\d{2})$")
 
 
 def _has_tz(s: str | None) -> bool:
@@ -74,8 +74,14 @@ def _has_tz(s: str | None) -> bool:
 def _normalize_iso_in_tz(val: str | None, tzname: str | None) -> str | None:
     if not val:
         return None
+    if isinstance(val, str) and "+00:00+00:00" in val:
+        val = val.replace("+00:00+00:00", "+00:00")
     if _has_tz(val):
-        return val
+        try:
+            dt = datetime.fromisoformat(val.replace("Z", "+00:00"))
+            return dt.astimezone(timezone.utc).isoformat()
+        except Exception:
+            return val
     if not tzname:
         return val
     try:
@@ -107,7 +113,14 @@ def _normalize_flight_times(flight: dict[str, Any]) -> dict[str, Any]:
     return flight
 
 
-async def lookup_schedule(hass: HomeAssistant, options: dict[str, Any], query: str, date_str: str) -> dict[str, Any]:
+async def lookup_schedule(
+    hass: HomeAssistant,
+    options: dict[str, Any],
+    query: str,
+    date_str: str,
+    dep_airport: str | None = None,
+    arr_airport: str | None = None,
+) -> dict[str, Any]:
     """Lookup a flight schedule and return a canonical flight dict.
 
     Uses configured providers in preferred order, returning a minimal
@@ -121,6 +134,10 @@ async def lookup_schedule(hass: HomeAssistant, options: dict[str, Any], query: s
     date_str = (date_str or "").strip()
     if not date_str or len(date_str) < 10:
         return {"error": "bad_date", "hint": "Pick a date."}
+
+    # Normalize optional disambiguation
+    dep_airport = dep_airport.strip().upper() if isinstance(dep_airport, str) and dep_airport.strip() else None
+    arr_airport = arr_airport.strip().upper() if isinstance(arr_airport, str) and arr_airport.strip() else None
 
     # Decide provider order: user preference first, then fallbacks
     use_sandbox = bool(options.get(CONF_FR24_USE_SANDBOX, False))
@@ -147,6 +164,7 @@ async def lookup_schedule(hass: HomeAssistant, options: dict[str, Any], query: s
         order = [schedule_pref]
         if "mock" not in order:
             order.append("mock")
+    _LOGGER.debug("Schedule lookup providers order=%s pref=%s", order, schedule_pref)
 
     if "mock" in order:
         try:
@@ -363,21 +381,28 @@ async def lookup_schedule(hass: HomeAssistant, options: dict[str, Any], query: s
                 if details.get("error") == "rate_limited":
                     return {"error": "provider_error", "hint": "AirLabs rate limit reached. Try again later."}
 
-    # If no provider keys configured
-    if not (av_key or al_key or fa_key or fr24_key):
-        return {"error": "no_provider", "hint": "No schedule provider configured. Add an API key in Flight Dashboard options."}
-
-    # If we reach here, we couldn't match (or providers not implemented for schedule lookups)
-    return {"error": "no_match", "hint": "No match found for that date (or provider limits). Try a different date."}
+    if "flightapi" in order:
+        _LOGGER.debug(
+            "FlightAPI key present=%s blocked=%s",
+            bool(fa_key),
+            is_blocked(hass, "flightapi"),
+        )
     if "flightapi" in order and fa_key and not is_blocked(hass, "flightapi"):
         try:
             from .providers.status.flightapi import FlightAPIStatusProvider
-        except Exception:
+        except Exception as e:
+            _LOGGER.warning("FlightAPI provider import failed: %s", e)
             FlightAPIStatusProvider = None  # type: ignore
 
         if FlightAPIStatusProvider:
+            _LOGGER.debug("FlightAPI schedule lookup for %s %s on %s", airline_code, flight_number, date_str)
             st = await FlightAPIStatusProvider(hass, fa_key).async_get_status(
-                {"airline_code": airline_code, "flight_number": flight_number, "scheduled_departure": f"{date_str}T00:00:00+00:00"}
+                {
+                    "airline_code": airline_code,
+                    "flight_number": flight_number,
+                    "scheduled_departure": f"{date_str}T00:00:00+00:00",
+                    "dep_airport": dep_airport,
+                }
             )
             details = st.details if st else None
             if isinstance(details, dict) and not details.get("error"):
@@ -421,8 +446,21 @@ async def lookup_schedule(hass: HomeAssistant, options: dict[str, Any], query: s
                 set_block(hass, "flightapi", block_for, reason)
                 details = None
             if isinstance(details, dict) and details.get("error"):
-                _LOGGER.warning("FlightAPI schedule lookup error: %s", details.get("error_message") or details.get("error"))
-                if details.get("error") == "quota_exceeded":
-                    return {"error": "provider_error", "hint": "FlightAPI.io quota exceeded. Try again later."}
-                if details.get("error") == "rate_limited":
-                    return {"error": "provider_error", "hint": "FlightAPI.io rate limit reached. Try again later."}
+                err = details.get("error")
+                _LOGGER.warning("FlightAPI schedule lookup error: %s", details.get("error_message") or err)
+                if err == "quota_exceeded":
+                    return {"error": "provider_error", "hint": "FlightAPI.io quota exceeded. Try again later.", "provider": "flightapi"}
+                if err == "rate_limited":
+                    return {"error": "provider_error", "hint": "FlightAPI.io rate limit reached. Try again later.", "provider": "flightapi"}
+                if err == "no_match":
+                    return {"error": "no_match", "hint": "No match found for that date. Verify flight number and date.", "provider": "flightapi"}
+                if err == "auth_error":
+                    return {"error": "provider_error", "hint": "FlightAPI.io key invalid or unauthorized.", "provider": "flightapi"}
+                return {"error": "provider_error", "hint": "FlightAPI.io error. Try another provider or verify the date.", "provider": "flightapi"}
+
+    # If no provider keys configured
+    if not (av_key or al_key or fa_key or fr24_key):
+        return {"error": "no_provider", "hint": "No schedule provider configured. Add an API key in Flight Dashboard options."}
+
+    # If we reach here, we couldn't match (or providers not implemented for schedule lookups)
+    return {"error": "no_match", "hint": "No match found for that date (or provider limits). Try a different date."}

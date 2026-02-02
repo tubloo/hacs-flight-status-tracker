@@ -13,14 +13,16 @@ Preview flow:
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 import re
+from zoneinfo import ZoneInfo
 from typing import Any, Callable
 
 import voluptuous as vol
 
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
+from homeassistant.util import dt as dt_util
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.components import persistent_notification
 
@@ -34,9 +36,8 @@ from .const import (
 )
 from .manual_store import async_add_manual_flight_record
 from .schedule_lookup import lookup_schedule
-from .directory import airline_logo_url, get_airport, get_airline
+from .directory import airline_logo_url, get_airport, get_airline, async_get_openflights_airport
 from .tz_short import tz_short_name
-from .airport_tz import get_airport_info
 from .storage import async_load_preview, async_save_preview, async_clear_preview
 
 _LOGGER = logging.getLogger(__name__)
@@ -47,6 +48,7 @@ SERVICE_SCHEMA_PREVIEW = vol.Schema(
         vol.Optional("airline"): cv.string,          # IATA like "AI"
         vol.Optional("flight_number"): cv.string,    # "157"
         vol.Optional("date"): cv.string,             # "YYYY-MM-DD"
+        vol.Optional("dep_airport"): cv.string,      # optional IATA to disambiguate
         vol.Optional("travellers", default=[]): vol.Any([cv.string], cv.string),
         vol.Optional("notes", default=""): cv.string,
     },
@@ -87,6 +89,35 @@ def _build_flight_key(airline: str, flight_number: str, dep_iata: str | None, da
     return f"{airline.upper()}-{flight_number}-{dep}-{date}"
 
 
+def _normalize_iso_in_tz(val: str | None, tzname: str | None) -> str | None:
+    if not val:
+        return None
+    # Guard against accidental double-offset strings like "+00:00+00:00"
+    if isinstance(val, str) and "+00:00+00:00" in val:
+        val = val.replace("+00:00+00:00", "+00:00")
+    try:
+        dt = datetime.fromisoformat(val.replace("Z", "+00:00").replace(" ", "T"))
+    except Exception:
+        return val
+    if dt.tzinfo is None:
+        if not tzname:
+            return val
+        try:
+            dt = dt.replace(tzinfo=ZoneInfo(tzname))
+        except Exception:
+            return val
+    return dt.astimezone(timezone.utc).isoformat()
+
+
+_TZ_RE = re.compile(r"(Z|[+-]\d{2}:\d{2})$")
+
+
+def _has_tz(val: str | None) -> bool:
+    if not val or not isinstance(val, str):
+        return False
+    return _TZ_RE.search(val.strip()) is not None
+
+
 def _preview_complete(flight: dict[str, Any] | None) -> tuple[bool, str | None]:
     """Return whether preview has minimum required fields to add."""
     if not isinstance(flight, dict):
@@ -95,19 +126,12 @@ def _preview_complete(flight: dict[str, Any] | None) -> tuple[bool, str | None]:
     arr_airport = ((flight.get("arr") or {}).get("airport") or {}).get("iata")
     dep = (flight.get("dep") or {})
     arr = (flight.get("arr") or {})
-    dep_air = (dep.get("airport") or {})
-    arr_air = (arr.get("airport") or {})
     dep_sched = dep.get("scheduled")
     arr_sched = arr.get("scheduled")
     if not dep_airport or not arr_airport:
         return False, "Missing departure/arrival airport. Try another provider or verify the date."
     if not dep_sched or not arr_sched:
         return False, "Missing scheduled departure/arrival time. Try another provider or verify the date."
-    # Require name (or city) + tz, but allow missing city with warning
-    if not (dep_air.get("name") or dep_air.get("city")) or not dep_air.get("tz"):
-        return False, f"Missing departure airport details for {dep_airport}. Check directory provider keys."
-    if not (arr_air.get("name") or arr_air.get("city")) or not arr_air.get("tz"):
-        return False, f"Missing arrival airport details for {arr_airport}. Check directory provider keys."
     return True, None
 
 
@@ -117,9 +141,13 @@ async def _try_enrich_preview(
     airline: str,
     flight_number: str,
     date_str: str,
+    dep_airport: str | None = None,
+    arr_airport: str | None = None,
 ) -> tuple[dict[str, Any] | None, str | None, str | None]:
     """Try to enrich preview using schedule lookup providers."""
-    result = await lookup_schedule(hass, options, f"{airline} {flight_number}", date_str)
+    result = await lookup_schedule(
+        hass, options, f"{airline} {flight_number}", date_str, dep_airport=dep_airport, arr_airport=arr_airport
+    )
     if result.get("flight"):
         return result, None, None
     return None, result.get("error") or "no_match_or_no_provider", result.get("hint")
@@ -134,6 +162,7 @@ async def async_register_preview_services(
         """Build a preview record from minimal inputs and store it server-side."""
         airline = str(call.data.get("airline", "")).strip().upper()
         flight_number = str(call.data.get("flight_number", "")).strip()
+        dep_airport = str(call.data.get("dep_airport", "")).strip().upper() or None
         if not airline or not flight_number:
             q_airline, q_fnum = _parse_query(call.data.get("query"))
             airline = airline or (q_airline or "")
@@ -151,6 +180,7 @@ async def async_register_preview_services(
                     "airline": airline,
                     "flight_number": flight_number,
                     "date": date_str,
+                    "dep_airport": dep_airport or "",
                     "travellers": travellers,
                     "notes": notes or "",
                 },
@@ -170,6 +200,7 @@ async def async_register_preview_services(
                     "airline": airline,
                     "flight_number": flight_number,
                     "date": date_str,
+                    "dep_airport": dep_airport or "",
                     "travellers": travellers,
                     "notes": notes or "",
                 },
@@ -188,6 +219,7 @@ async def async_register_preview_services(
                 "airline": airline,
                 "flight_number": flight_number,
                 "date": date_str,
+                "dep_airport": dep_airport or "",
                 "travellers": travellers,
                 "notes": notes or "",
             },
@@ -225,7 +257,9 @@ async def async_register_preview_services(
         }
 
         options = options_provider()
-        status_raw, err, hint = await _try_enrich_preview(hass, options, airline, flight_number, date_str)
+        status_raw, err, hint = await _try_enrich_preview(
+            hass, options, airline, flight_number, date_str, dep_airport, None
+        )
 
         if status_raw:
             if isinstance(status_raw, dict) and isinstance(status_raw.get("flight"), dict):
@@ -244,36 +278,30 @@ async def async_register_preview_services(
             arr_air = (arr.get("airport") or {})
 
             if f.get("airline_code") and not f.get("airline_name"):
-                airline = await get_airline(hass, options, f.get("airline_code"))
-                if airline:
-                    f["airline_name"] = airline.get("name") or f.get("airline_name")
+                airline_info = await get_airline(hass, options, f.get("airline_code"))
+                if airline_info:
+                    f["airline_name"] = airline_info.get("name") or f.get("airline_name")
                     if not f.get("airline_logo_url"):
-                        f["airline_logo_url"] = airline.get("logo") or f.get("airline_logo_url")
+                        f["airline_logo_url"] = airline_info.get("logo") or airline_info.get("logo_url") or f.get("airline_logo_url")
 
             if dep_air.get("iata") and (not dep_air.get("name") or not dep_air.get("city") or not dep_air.get("tz")):
                 airport = await get_airport(hass, options, dep_air.get("iata"))
+                if not airport:
+                    airport = await async_get_openflights_airport(hass, dep_air.get("iata"))
                 if airport:
                     dep_air["name"] = dep_air.get("name") or airport.get("name")
                     dep_air["city"] = dep_air.get("city") or airport.get("city")
                     dep_air["tz"] = dep_air.get("tz") or airport.get("tz")
             if arr_air.get("iata") and (not arr_air.get("name") or not arr_air.get("city") or not arr_air.get("tz")):
                 airport = await get_airport(hass, options, arr_air.get("iata"))
+                if not airport:
+                    airport = await async_get_openflights_airport(hass, arr_air.get("iata"))
                 if airport:
                     arr_air["name"] = arr_air.get("name") or airport.get("name")
                     arr_air["city"] = arr_air.get("city") or airport.get("city")
                     arr_air["tz"] = arr_air.get("tz") or airport.get("tz")
 
-            # Final fallback for missing city/name/tz from static map
-            if dep_air.get("iata") and (not dep_air.get("name") or not dep_air.get("city") or not dep_air.get("tz")):
-                info = get_airport_info(dep_air.get("iata"), options) or {}
-                dep_air["name"] = dep_air.get("name") or info.get("name")
-                dep_air["city"] = dep_air.get("city") or info.get("city")
-                dep_air["tz"] = dep_air.get("tz") or info.get("tz")
-            if arr_air.get("iata") and (not arr_air.get("name") or not arr_air.get("city") or not arr_air.get("tz")):
-                info = get_airport_info(arr_air.get("iata"), options) or {}
-                arr_air["name"] = arr_air.get("name") or info.get("name")
-                arr_air["city"] = arr_air.get("city") or info.get("city")
-                arr_air["tz"] = arr_air.get("tz") or info.get("tz")
+            # No static fallback: only use directory providers / cache
 
             dep_sched = dep.get("scheduled")
             arr_sched = arr.get("scheduled")
@@ -284,10 +312,50 @@ async def async_register_preview_services(
 
             dep["airport"] = dep_air
             arr["airport"] = arr_air
+
+            def _to_local(ts: Any, tzname: str | None) -> str | None:
+                if not ts or not tzname or not isinstance(ts, str):
+                    return None
+                dt = dt_util.parse_datetime(ts)
+                if not dt:
+                    return None
+                if not dt.tzinfo:
+                    # Treat naive timestamps as local to the airport tz
+                    try:
+                        dt = dt.replace(tzinfo=ZoneInfo(tzname))
+                    except Exception:
+                        dt = dt.replace(tzinfo=dt_util.UTC)
+                try:
+                    return dt.astimezone(ZoneInfo(tzname)).isoformat()
+                except Exception:
+                    return None
+
+            dep["scheduled_local"] = _to_local(dep.get("scheduled"), dep_air.get("tz"))
+            dep["estimated_local"] = _to_local(dep.get("estimated"), dep_air.get("tz"))
+            dep["actual_local"] = _to_local(dep.get("actual"), dep_air.get("tz"))
+            arr["scheduled_local"] = _to_local(arr.get("scheduled"), arr_air.get("tz"))
+            arr["estimated_local"] = _to_local(arr.get("estimated"), arr_air.get("tz"))
+            arr["actual_local"] = _to_local(arr.get("actual"), arr_air.get("tz"))
+            f["dep"] = dep
+            f["arr"] = arr
+
+            # Normalize naive timestamps using airport tz once it is known
+            dep["scheduled"] = _normalize_iso_in_tz(dep.get("scheduled"), dep_air.get("tz"))
+            dep["estimated"] = _normalize_iso_in_tz(dep.get("estimated"), dep_air.get("tz"))
+            dep["actual"] = _normalize_iso_in_tz(dep.get("actual"), dep_air.get("tz"))
+            arr["scheduled"] = _normalize_iso_in_tz(arr.get("scheduled"), arr_air.get("tz"))
+            arr["estimated"] = _normalize_iso_in_tz(arr.get("estimated"), arr_air.get("tz"))
+            arr["actual"] = _normalize_iso_in_tz(arr.get("actual"), arr_air.get("tz"))
+            # If still naive (no tz info), coerce to UTC so UI can render times
+            if isinstance(dep.get("scheduled"), str) and not _has_tz(dep.get("scheduled")):
+                dep["scheduled"] = dep.get("scheduled") + "+00:00"
+            if isinstance(arr.get("scheduled"), str) and not _has_tz(arr.get("scheduled")):
+                arr["scheduled"] = arr.get("scheduled") + "+00:00"
             f["dep"] = dep
             f["arr"] = arr
             preview["flight"] = f
 
+            # If provider returned multiple matches, require user disambiguation
             ready, hint = _preview_complete(preview.get("flight"))
             preview["ready"] = ready
             preview["error"] = None if ready else "incomplete"
@@ -315,20 +383,19 @@ async def async_register_preview_services(
                 # Warn if city is missing but allow add
                 dep_air = ((f.get("dep") or {}).get("airport") or {})
                 arr_air = ((f.get("arr") or {}).get("airport") or {})
-                missing_city = []
-                if dep_air.get("iata") and not dep_air.get("city"):
-                    missing_city.append(dep_air.get("iata"))
-                if arr_air.get("iata") and not arr_air.get("city"):
-                    missing_city.append(arr_air.get("iata"))
-                if missing_city:
-                    preview["warning"] = (preview.get("warning") + " " if preview.get("warning") else "") + (
-                        "Airport city missing for: " + ", ".join(missing_city)
-                    )
+                missing_details = []
+                if dep_air.get("iata") and (not dep_air.get("name") or not dep_air.get("city") or not dep_air.get("tz")):
+                    missing_details.append(dep_air.get("iata"))
+                if arr_air.get("iata") and (not arr_air.get("name") or not arr_air.get("city") or not arr_air.get("tz")):
+                    missing_details.append(arr_air.get("iata"))
+                if missing_details:
+                    msg = "Airport details missing for: " + ", ".join(missing_details)
+                    preview["warning"] = (preview.get("warning") + " " if preview.get("warning") else "") + msg
                     persistent_notification.async_create(
                         hass,
-                        f"Airport city missing for: {', '.join(missing_city)}",
+                        msg,
                         title="Flight Dashboard — Preview warning",
-                        notification_id="flight_dashboard_preview_city_missing",
+                        notification_id="flight_dashboard_preview_airport_missing",
                     )
         else:
             preview["flight"] = flight
@@ -406,6 +473,7 @@ async def async_register_preview_services(
         """Add a flight directly from minimal inputs without preview."""
         airline = str(call.data.get("airline", "")).strip().upper()
         flight_number = str(call.data.get("flight_number", "")).strip()
+        dep_airport = str(call.data.get("dep_airport", "")).strip().upper() or None
         if not airline or not flight_number:
             q_airline, q_fnum = _parse_query(call.data.get("query"))
             airline = airline or (q_airline or "")
@@ -431,7 +499,13 @@ async def async_register_preview_services(
             )
             return
 
-        result = await lookup_schedule(hass, options_provider(), f"{airline} {flight_number}", date_str)
+        result = await lookup_schedule(
+            hass,
+            options_provider(),
+            f"{airline} {flight_number}",
+            date_str,
+            dep_airport=dep_airport,
+        )
         flight = result.get("flight") if isinstance(result, dict) else None
         if isinstance(flight, dict):
             flight["travellers"] = travellers
