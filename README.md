@@ -13,16 +13,25 @@ instance to the configured provider APIs using your own keys.
 
 ## Installation
 
-### HACS (recommended)
-1. Open **HACS → Integrations**.
-2. Click **Explore & Download Repositories** and search for **Flight Dashboard**.
-3. Download and restart Home Assistant.
-4. Go to **Settings → Devices & Services → Add Integration** and search **Flight Dashboard**.
+### Manual (current)
+**Option A — git clone (recommended)**
+```
+cd /config/custom_components
+git clone https://github.com/tubloo/hass-integration-flight-dashboard flight_dashboard
+```
+Then restart Home Assistant.
 
-### Manual
-1. Copy `custom_components/flight_dashboard` into `/config/custom_components/flight_dashboard`.
-2. Restart Home Assistant.
-3. Add the integration in **Settings → Devices & Services**.
+**Option B — download ZIP**
+1. Download the repo ZIP from GitHub.
+2. Extract it.
+3. Copy `custom_components/flight_dashboard` into `/config/custom_components/flight_dashboard`.
+4. Restart Home Assistant.
+
+Finally, add the integration in **Settings → Devices & Services**.
+
+### HACS (future)
+HACS support is not enabled yet. Once the repository is made HACS‑ready, these
+instructions will be added.
 
 ## Setup Package (Helpers + Scripts)
 
