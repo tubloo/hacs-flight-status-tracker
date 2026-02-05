@@ -3,6 +3,11 @@
 > This project was created with the assistance of OpenAI Codex.
 
 Flight Dashboard is a Home Assistant integration that tracks upcoming flights and their status.
+It lets you add flights, preview them before saving, and view a clean, card-based list with live
+status, timing, and gate details.
+
+![Flight list sample](docs/flight-list-sample.png)
+![Add flight sample](docs/flight-add-sample.png)
 
 ## Privacy & Data Handling
 
