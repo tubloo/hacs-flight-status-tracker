@@ -286,7 +286,11 @@ async def async_register_preview_services(
             if dep_air.get("iata") and (not dep_air.get("name") or not dep_air.get("city") or not dep_air.get("tz")):
                 airport = await get_airport(hass, options, dep_air.get("iata"))
                 if not airport:
-                    airport = await async_get_openflights_airport(hass, dep_air.get("iata"))
+                    airport = await async_get_openflights_airport(
+                        hass,
+                        dep_air.get("iata"),
+                        url=options.get("directory_airports_url"),
+                    )
                 if airport:
                     dep_air["name"] = dep_air.get("name") or airport.get("name")
                     dep_air["city"] = dep_air.get("city") or airport.get("city")
@@ -294,7 +298,11 @@ async def async_register_preview_services(
             if arr_air.get("iata") and (not arr_air.get("name") or not arr_air.get("city") or not arr_air.get("tz")):
                 airport = await get_airport(hass, options, arr_air.get("iata"))
                 if not airport:
-                    airport = await async_get_openflights_airport(hass, arr_air.get("iata"))
+                    airport = await async_get_openflights_airport(
+                        hass,
+                        arr_air.get("iata"),
+                        url=options.get("directory_airports_url"),
+                    )
                 if airport:
                     arr_air["name"] = arr_air.get("name") or airport.get("name")
                     arr_air["city"] = arr_air.get("city") or airport.get("city")

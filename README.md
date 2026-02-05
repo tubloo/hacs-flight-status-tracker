@@ -574,37 +574,63 @@ views:
 #### Add Flight (preview + confirm)
 Use this **Add Flight** card with the Tailwind preview panel:
 
+![Add flight sample](docs/flight-add-sample.png)
+
 ```yaml
 type: vertical-stack
 cards:
   - type: custom:mushroom-title-card
     title: Add a flight
     subtitle: Enter airline + number, preview, then confirm
-  - type: entities
-    show_header_toggle: false
-    entities:
-      - entity: input_text.fd_airline
-        name: Airline code (e.g. EK)
-      - entity: input_text.fd_flight_number
-        name: Flight number (e.g. 236)
-      - entity: input_datetime.fd_flight_date
-        name: Date
-      - entity: input_text.fd_dep_airport
-        name: Departure airport (optional, e.g. AMD)
-      - entity: input_text.fd_travellers
-        name: Travellers (optional)
-      - entity: input_text.fd_notes
-        name: Notes (optional)
-
+  - type: vertical-stack
+    cards:
+      - type: horizontal-stack
+        cards:
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: input_text.fd_airline
+                name: Airline code (e.g. EK)
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: input_text.fd_flight_number
+                name: Flight number (e.g. 236)
+      - type: horizontal-stack
+        cards:
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: input_datetime.fd_flight_date
+                name: Date
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: input_text.fd_dep_airport
+                name: Departure airport (optional, e.g. AMD)
+      - type: horizontal-stack
+        cards:
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: input_text.fd_travellers
+                name: Travellers (optional)
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: input_text.fd_notes
+                name: Notes (optional)
   - type: custom:tailwindcss-template-card
     content: >
       {% set p = state_attr('sensor.flight_dashboard_add_preview','preview') or {} %}
       {% set f = p.get('flight') %}
       {% if not f %}
-      <div class='rounded-2xl bg-[rgba(255,255,255,0.04)] p-4'>
-        <div class='text-sm opacity-80'>Enter airline + number, then tap Preview.</div>
-      </div>
+        <div class='rounded-2xl bg-[rgba(255,255,255,0.04)] p-4'>
+          <div class='text-sm opacity-80'>Enter airline + number, then tap Preview.</div>
+        </div>
       {% else %}
+
+      {% set date_fmt = '%d %b (%a)' %}
 
       {% set dep = f.get('dep') or {} %}
       {% set arr = f.get('arr') or {} %}
@@ -640,8 +666,11 @@ cards:
       {% set arr_tz = arr_air.get('tz_short') or '' %}
       {% set viewer_tz = now().strftime('%Z') %}
 
-      {% set dep_viewer_dt = dep.get('scheduled') and (as_datetime(dep.get('scheduled')) | as_local) %}
-      {% set arr_viewer_dt = arr.get('scheduled') and (as_datetime(arr.get('scheduled')) | as_local) %}
+      {% set dep_time = dep.get('actual') or dep.get('estimated') or dep.get('scheduled') %}
+      {% set arr_time = arr.get('actual') or arr.get('estimated') or arr.get('scheduled') %}
+
+      {% set dep_viewer_dt = dep_time and (as_datetime(dep_time) | as_local) %}
+      {% set arr_viewer_dt = arr_time and (as_datetime(arr_time) | as_local) %}
       {% set dep_viewer = dep_viewer_dt and dep_viewer_dt.strftime('%H:%M') %}
       {% set arr_viewer = arr_viewer_dt and arr_viewer_dt.strftime('%H:%M') %}
 
@@ -651,71 +680,204 @@ cards:
       {% set dep_changed = dep_est_or_act and dep_sched and dep_est_or_act != dep_sched %}
       {% set arr_changed = arr_est_or_act and arr_sched and arr_est_or_act != arr_sched %}
 
-      {% set dep_date = dep_sched_dt and dep_sched_dt.strftime('%d %b') or '—' %}
+      {% set show_dep_viewer = dep_viewer and (dep_tz != viewer_tz) and (dep_viewer != (dep_est_or_act or dep_sched)) %}
+      {% set show_arr_viewer = arr_viewer and (arr_tz != viewer_tz) and (arr_viewer != (arr_est_or_act or arr_sched)) %}
+      {% set show_viewer_row = not (dep_tz == viewer_tz and arr_tz == viewer_tz) %}
+
+      {% set dep_date = dep_sched_dt and dep_sched_dt.strftime(date_fmt) or '—' %}
+      {% set arr_date = arr_sched_dt and arr_sched_dt.strftime(date_fmt) or '—' %}
 
       {% set airline_logo = f.get('airline_logo_url') or ("https://pics.avs.io/64/64/" ~ (f.get('airline_code','') | upper) ~ ".png") %}
 
-      <div class='rounded-2xl bg-[rgba(255,255,255,0.04)] p-4 space-y-2'>
+      {% set ready = p.get('ready') %}
+      {% set has_error = p.get('error') %}
+
+      {% set raw_state = (f.get('status_state') or 'unknown') | lower %}
+      {% set dep_state_dt = dep.get('scheduled') and as_datetime(dep.get('scheduled')) %}
+      {% set is_future = dep_state_dt and dep_state_dt > now() %}
+
+      {% if raw_state in ['active','en route','en-route','enroute'] %}
+        {% set state = 'En Route' %}
+      {% elif raw_state == 'arrived' %}
+        {% set state = 'Arrived' %}
+      {% elif raw_state == 'cancelled' %}
+        {% set state = 'Cancelled' %}
+      {% elif raw_state == 'diverted' %}
+        {% set state = 'Diverted' %}
+      {% elif raw_state == 'unknown' and is_future %}
+        {% set state = 'Scheduled' %}
+      {% else %}
+        {% set state = raw_state | title %}
+      {% endif %}
+
+      {% set delay = f.get('delay_status_key') or ((f.get('delay_status') or 'unknown') | lower | replace(' ', '_')) %}
+      {% set is_delayed = delay == 'delayed' %}
+      {% set is_on_time = delay in ['on_time','early'] %}
+      {% set within_6h = dep_state_dt and (as_timestamp(dep_state_dt) - as_timestamp(now()) <= 6*3600) and (as_timestamp(dep_state_dt) - as_timestamp(now()) > 0) %}
+
+      {% set badge = 'bg-gray-600 text-white' %}
+      {% set route_color = 'text-gray-400' %}
+      {% set time_color = 'text-gray-300' %}
+
+      {% if state in ['Cancelled','Diverted'] or is_delayed %}
+        {% set badge = 'bg-red-800 text-white' %}
+        {% set route_color = 'text-red-700' %}
+        {% set time_color = 'text-red-600' %}
+      {% elif state == 'En Route' %}
+        {% set badge = 'bg-emerald-800 text-white' %}
+        {% set route_color = 'text-emerald-700' %}
+        {% set time_color = 'text-emerald-600' %}
+      {% elif state == 'Arrived' and is_on_time %}
+        {% set badge = 'bg-emerald-800 text-white' %}
+        {% set route_color = 'text-emerald-700' %}
+        {% set time_color = 'text-emerald-600' %}
+      {% elif state == 'Arrived' and is_delayed %}
+        {% set badge = 'bg-red-800 text-white' %}
+        {% set route_color = 'text-red-700' %}
+        {% set time_color = 'text-red-600' %}
+      {% elif state == 'Scheduled' and is_on_time and within_6h %}
+        {% set badge = 'bg-emerald-800 text-white' %}
+        {% set route_color = 'text-emerald-700' %}
+        {% set time_color = 'text-emerald-600' %}
+      {% endif %}
+      {% set route_bg = route_color | replace('text-','bg-') %}
+
+      {% set pos = f.get('position') or {} %}
+      {% set pos_ts = pos.get('timestamp') %}
+      {% set now_dt = pos_ts and as_datetime(pos_ts) or now() %}
+
+      {% set total = (arr_time and dep_time) and (as_timestamp(as_datetime(arr_time)) - as_timestamp(as_datetime(dep_time))) %}
+      {% set elapsed = (arr_time and dep_time) and (as_timestamp(now_dt) - as_timestamp(as_datetime(dep_time))) %}
+      {% set pct = (total and elapsed) and (elapsed / total * 100) or 0 %}
+      {% if pct < 0 %}{% set pct = 0 %}{% endif %}
+      {% if pct > 100 %}{% set pct = 100 %}{% endif %}
+
+      {% set in_flight = state == 'En Route' %}
+
+      {% if in_flight %}
+        {% set pct_gap = 6 if pct < 6 else (94 if pct > 94 else pct) %}
+        {% set plane_x = pct_gap %}
+      {% elif state == 'Arrived' %}
+        {% set plane_x = 100 %}
+      {% else %}
+        {% set plane_x = 0 %}
+      {% endif %}
+
+      {% if state == 'Arrived' %}
+        {% set plane_transform = "translate(-100%, -50%)" %}
+      {% elif state == 'Scheduled' %}
+        {% set plane_transform = "translate(0%, -50%)" %}
+      {% else %}
+        {% set plane_transform = "translate(-50%, -50%)" %}
+      {% endif %}
+
+      {% set plane_w_px = 22 %}
+      {% set gap_px = 3 %}
+      {% set sched_extra_px = 7 %}
+      {% set base_cut = (plane_w_px / 2) + gap_px %}
+      {% set cut_px = (base_cut + sched_extra_px) if state == 'Scheduled' else base_cut %}
+
+      {% if in_flight %}
+        {% set left_width = "calc(" ~ plane_x ~ "% - " ~ cut_px ~ "px)" %}
+        {% set right_left = "calc(" ~ plane_x ~ "% + " ~ cut_px ~ "px)" %}
+        {% set right_width = "calc(100% - " ~ plane_x ~ "% - " ~ cut_px ~ "px)" %}
+      {% elif state == 'Arrived' %}
+        {% set left_width = "calc(100% - " ~ cut_px ~ "px)" %}
+        {% set right_width = "0%" %}
+        {% set right_left = "100%" %}
+      {% else %}
+        {% set left_width = "0%" %}
+        {% set right_left = "calc(0% + " ~ cut_px ~ "px)" %}
+        {% set right_width = "calc(100% - " ~ cut_px ~ "px)" %}
+      {% endif %}
+
+      {% if ready %}
+        {% set ready_badge = "bg-emerald-800 text-white" %}
+        {% set ready_icon = "✔" %}
+        {% set ready_text = "Ready" %}
+      {% else %}
+        {% set ready_badge = "bg-red-800 text-white" %}
+        {% set ready_icon = "✖" %}
+        {% set ready_text = "Not Ready" %}
+      {% endif %}
+
+      {% set dep_term = dep.get('terminal') or '' %}
+      {% set dep_gate = dep.get('gate') or '' %}
+      {% set arr_term = arr.get('terminal') or '' %}
+      {% set arr_gate = arr.get('gate') or '' %}
+      {% set dep_term_gate = (("Terminal " ~ dep_term) if dep_term else "") ~ ((" · Gate " ~ dep_gate) if dep_gate else "") %}
+      {% set arr_term_gate = (("Terminal " ~ arr_term) if arr_term else "") ~ ((" · Gate " ~ arr_gate) if arr_gate else "") %}
+      {% set show_term_gate_row = (dep_term_gate | trim) or (arr_term_gate | trim) %}
+
+      <div class='rounded-2xl bg-[rgba(255,255,255,0.04)] p-4 space-y-3'>
         <div class='flex items-center gap-3'>
-          <img src='{{ airline_logo }}' class='h-6 w-6 object-contain rounded' />
+          <img src='{{ airline_logo }}' class='h-12 w-12 object-contain rounded bg-white/90 p-1 ring-1 ring-white/30' />
           <div class='flex-1'>
-            <div class='text-lg font-semibold'>
-              {{ f.get('airline_code','—') }} {{ f.get('flight_number','—') }} · {{ dep_code }} → {{ arr_code }} · {{ dep_date }}
-            </div>
+            <div class='text-lg'>{{ f.get('airline_code','—') }} {{ f.get('flight_number','—') }} · {{ dep_date }}</div>
             <div class='text-sm opacity-80'>
               {{ f.get('airline_name') or '' }}{% if f.get('aircraft_type') %} · {{ f.get('aircraft_type') }}{% endif %}
             </div>
           </div>
+          <span class='text-xs px-2 py-1 rounded-full {{ ready_badge }}'>{{ ready_icon }} {{ ready_text }}</span>
         </div>
 
-        <div class='grid grid-cols-2 gap-3 text-sm'>
-          <div>
-            <div class='font-semibold'>{{ dep_label }} ({{ dep_code }})</div>
-            <div>
-              {% if dep_changed %}
-                <span class='line-through opacity-60'>{{ dep_sched }}</span>
-                <span class='font-semibold'>{{ dep_est_or_act }}</span>
-              {% else %}
-                <span>{{ dep_est_or_act or dep_sched or '—' }}</span>
-              {% endif %} {{ dep_tz }}
+        {% if not has_error %}
+        <div class='flex items-center gap-2 flex-nowrap'>
+          <div class='text-xl sm:text-2xl font-semibold shrink-0 whitespace-nowrap'>{{ dep_code }}</div>
+          <div class='flex-1 min-w-0'>
+            <div class='relative w-full h-0.5'>
+              <div class='absolute left-0 top-0 h-0.5 rounded {{ route_bg }}' style='width: {{ left_width }};'></div>
+              <div class='absolute top-0 h-0.5 rounded bg-gray-300/60' style='left: {{ right_left }}; width: {{ right_width }};'></div>
+              <div class='absolute {{ route_color }}' style='left: {{ plane_x }}%; top: 50%; transform: {{ plane_transform }}; font-size:18px; font-weight:700;'>✈</div>
             </div>
-            {% if dep_tz and dep_tz != viewer_tz and dep_viewer %}
-              <div class='opacity-70'>{{ dep_viewer }} {{ viewer_tz }}</div>
-            {% endif %}
           </div>
-          <div>
-            <div class='font-semibold'>{{ arr_label }} ({{ arr_code }})</div>
-            <div>
-              {% if arr_changed %}
-                <span class='line-through opacity-60'>{{ arr_sched }}</span>
-                <span class='font-semibold'>{{ arr_est_or_act }}</span>
-              {% else %}
-                <span>{{ arr_est_or_act or arr_sched or '—' }}</span>
-              {% endif %} {{ arr_tz }}
-            </div>
-            {% if arr_tz and arr_tz != viewer_tz and arr_viewer %}
-              <div class='opacity-70'>{{ arr_viewer }} {{ viewer_tz }}</div>
-            {% endif %}
-          </div>
+          <div class='text-xl sm:text-2xl font-semibold shrink-0 whitespace-nowrap'>{{ arr_code }}</div>
         </div>
 
-        <div class='text-sm opacity-80'>
-          {% if p.get('hint') %}
-            ❗ {{ p.get('hint') }}
+        <div class='grid grid-cols-2 gap-x-4 gap-y-1 text-sm'>
+          <div class='opacity-80'>{{ dep_label }}</div><div class='opacity-80'>{{ arr_label }}</div>
+          <div class='opacity-70'>Scheduled departure</div><div class='opacity-70'>Scheduled arrival</div>
+          <div class='text-2xl font-semibold {{ time_color }}'>
+            {% if dep_changed %}{{ dep_est_or_act }}{% else %}{{ dep_est_or_act or dep_sched or '—' }}{% endif %}
+            <span class='text-xs opacity-70 ml-1'>{{ dep_tz }}</span>
+          </div>
+          <div class='text-2xl font-semibold {{ time_color }}'>
+            {% if arr_changed %}{{ arr_est_or_act }}{% else %}{{ arr_est_or_act or arr_sched or '—' }}{% endif %}
+            <span class='text-xs opacity-70 ml-1'>{{ arr_tz }}</span>
+          </div>
+          {% if dep_changed or arr_changed %}
+          <div class='line-through opacity-50 {% if not dep_changed %}opacity-0{% endif %}'>{% if dep_changed %}{{ dep_sched }}{% else %}&nbsp;{% endif %}</div>
+          <div class='line-through opacity-50 {% if not arr_changed %}opacity-0{% endif %}'>{% if arr_changed %}{{ arr_sched }}{% else %}&nbsp;{% endif %}</div>
+          {% endif %}
+          {% if show_viewer_row %}
+          <div class='opacity-70 {% if not show_dep_viewer %}opacity-0{% endif %}'>{% if show_dep_viewer %}{{ dep_viewer }} {{ viewer_tz }}{% else %}&nbsp;{% endif %}</div>
+          <div class='opacity-70 {% if not show_arr_viewer %}opacity-0{% endif %}'>{% if show_arr_viewer %}{{ arr_viewer }} {{ viewer_tz }}{% else %}&nbsp;{% endif %}</div>
+          {% endif %}
+          {% if show_term_gate_row %}
+          <div class='opacity-70'>{{ dep_term_gate }}</div>
+          <div class='opacity-70'>{{ arr_term_gate }}</div>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        {% if p.get('error') or p.get('warning') or p.get('hint') %}
+        <div class='text-sm'>
+          {% if p.get('error') %}
+            <div class='text-red-300'>❌ {{ p.get('error') }}</div>
           {% elif p.get('warning') %}
-            ⚠️ {{ p.get('warning') }}
-          {% elif p.get('error') %}
-            ❌ {{ p.get('error') }}
-          {% endif %} Ready to Add Flight: {{ p.get('ready') }}
+            <div class='text-amber-300'>⚠️ {{ p.get('warning') }}</div>
+          {% elif p.get('hint') %}
+            <div class='text-gray-300'>❗ {{ p.get('hint') }}</div>
+          {% endif %}
         </div>
+        {% endif %}
       </div>
       {% endif %}
-
   - type: horizontal-stack
     cards:
       - type: custom:mushroom-entity-card
         entity: script.fd_preview_flight
-        name: Preview Flight
+        name: Search
         icon: mdi:magnify
         tap_action:
           action: call-service
@@ -740,11 +902,14 @@ cards:
           service: script.turn_on
           target:
             entity_id: script.fd_clear_preview
+
 ```
 
 #### Flight Status List
 Use this **Tailwind Flight List** card (sorted by departure time). Requires
 `custom:tailwindcss-template-card` and `custom:auto-entities`.
+
+![Flight list sample](docs/flight-list-sample.png)
 
 ```yaml
 type: vertical-stack
@@ -757,10 +922,12 @@ cards:
     card_param: cards
     filter:
       template: >
-        {% set flights = state_attr('sensor.flight_dashboard_upcoming_flights','flights') or [] %}
-        {% set flights = flights | sort(attribute='dep.scheduled') %}
-        [
-        {%- for f in flights -%}
+        {% set flights =
+        state_attr('sensor.flight_dashboard_upcoming_flights','flights') or []
+        %} {% set flights = flights | sort(attribute='dep.scheduled') %} [ {%-
+        for f in flights -%}
+
+          {%- set date_fmt = '%d %b (%a)' -%}
 
           {%- set dep = f.dep or {} -%}
           {%- set arr = f.arr or {} -%}
@@ -772,7 +939,6 @@ cards:
 
           {%- set dep_label_raw = dep_air.city or dep_air.name or dep_code -%}
           {%- set arr_label_raw = arr_air.city or arr_air.name or arr_code -%}
-
           {%- set dep_label = dep_label_raw | title -%}
           {%- set arr_label = arr_label_raw | title -%}
 
@@ -796,49 +962,239 @@ cards:
           {%- set arr_tz = arr_air.tz_short or '' -%}
           {%- set viewer_tz = now().strftime('%Z') -%}
 
-          {%- set dep_viewer_dt = dep.scheduled and (as_datetime(dep.scheduled) | as_local) -%}
-          {%- set arr_viewer_dt = arr.scheduled and (as_datetime(arr.scheduled) | as_local) -%}
-          {%- set dep_viewer = dep_viewer_dt and dep_viewer_dt.strftime('%H:%M') -%}
-          {%- set arr_viewer = arr_viewer_dt and arr_viewer_dt.strftime('%H:%M') -%}
-
           {%- set dep_est_or_act = dep_act or dep_est -%}
           {%- set arr_est_or_act = arr_act or arr_est -%}
 
           {%- set dep_changed = dep_est_or_act and dep_sched and dep_est_or_act != dep_sched -%}
           {%- set arr_changed = arr_est_or_act and arr_sched and arr_est_or_act != arr_sched -%}
 
-          {%- set delay = (f.get('delay_status') or 'Unknown') -%}
-          {%- set time_color = 'text-emerald-300' if delay == 'On Time' else ('text-red-300' if delay == 'Delayed' else 'text-gray-300') -%}
-
-          {%- set raw_state = (f.get('status_state') or 'Unknown') -%}
-          {%- set raw_state_lc = raw_state | lower -%}
+          {%- set raw_state = (f.get('status_state') or 'unknown') | lower -%}
           {%- set dep_state_dt = dep.scheduled and as_datetime(dep.scheduled) -%}
-          {%- set is_future = dep_state_dt and dep_state_dt > now() -%}
-          {%- set state = 'Scheduled' if (raw_state_lc == 'unknown' and is_future) else (raw_state | title) -%}
 
-          {%- set badge = 'bg-gray-600 text-white' -%}
-          {%- if state == 'Scheduled' -%}
-            {%- set badge = 'bg-yellow-600 text-black' -%}
-          {%- elif state == 'Active' -%}
-            {%- set badge = 'bg-blue-600 text-white' -%}
-          {%- elif state == 'Arrived' -%}
-            {%- set badge = 'bg-emerald-700 text-white' -%}
-          {%- elif state == 'Cancelled' -%}
-            {%- set badge = 'bg-red-700 text-white' -%}
-          {%- elif state == 'Diverted' -%}
-            {%- set badge = 'bg-orange-600 text-white' -%}
+          {%- if raw_state in ['active','en route','en-route','enroute'] -%}
+            {%- set state = 'En Route' -%}
+          {%- elif raw_state == 'arrived' -%}
+            {%- set state = 'Arrived' -%}
+          {%- elif raw_state == 'cancelled' -%}
+            {%- set state = 'Cancelled' -%}
+          {%- elif raw_state == 'diverted' -%}
+            {%- set state = 'Diverted' -%}
+          {%- elif raw_state == 'unknown' -%}
+            {%- set state = 'Unknown' -%}
+          {%- else -%}
+            {%- set state = raw_state | title -%}
           {%- endif -%}
 
-          {%- set dep_date = dep_sched_dt and dep_sched_dt.strftime('%d %b') or '—' -%}
+          {# route_state controls plane/route only #}
+          {%- set route_state = 'Scheduled' if raw_state == 'unknown' else state -%}
+
+          {%- set delay = f.get('delay_status_key') or ((f.get('delay_status') or 'unknown') | lower | replace(' ', '_')) -%}
+          {%- set is_delayed = delay == 'delayed' -%}
+          {%- set is_on_time = delay in ['on_time','early'] -%}
+
+          {%- set within_6h = dep_state_dt and (as_timestamp(dep_state_dt) - as_timestamp(now()) <= 6*3600) and (as_timestamp(dep_state_dt) - as_timestamp(now()) > 0) -%}
+
+          {%- set badge = 'bg-gray-600 text-white' -%}
+          {%- set route_color = 'text-gray-400' -%}
+          {%- set time_color = 'text-gray-300' -%}
+
+          {%- if state in ['Cancelled','Diverted'] or is_delayed -%}
+            {%- set badge = 'bg-red-800 text-white' -%}
+            {%- set route_color = 'text-red-700' -%}
+            {%- set time_color = 'text-red-600' -%}
+          {%- elif state == 'En Route' -%}
+            {%- set badge = 'bg-emerald-800 text-white' -%}
+            {%- set route_color = 'text-emerald-700' -%}
+            {%- set time_color = 'text-emerald-600' -%}
+          {%- elif state == 'Arrived' and is_on_time -%}
+            {%- set badge = 'bg-emerald-800 text-white' -%}
+            {%- set route_color = 'text-emerald-700' -%}
+            {%- set time_color = 'text-emerald-600' -%}
+          {%- elif state == 'Arrived' and is_delayed -%}
+            {%- set badge = 'bg-red-800 text-white' -%}
+            {%- set route_color = 'text-red-700' -%}
+            {%- set time_color = 'text-red-600' -%}
+          {%- elif state == 'Scheduled' and is_on_time and within_6h -%}
+            {%- set badge = 'bg-emerald-800 text-white' -%}
+            {%- set route_color = 'text-emerald-700' -%}
+            {%- set time_color = 'text-emerald-600' -%}
+          {%- endif -%}
+
+          {%- set route_bg = route_color | replace('text-','bg-') -%}
+
+          {%- set dep_date = dep_sched_dt and dep_sched_dt.strftime(date_fmt) or '—' -%}
+          {%- set arr_date = arr_sched_dt and arr_sched_dt.strftime(date_fmt) or '—' -%}
           {%- set pax = (f.travellers | join(', ')) if f.travellers else '' -%}
+
+          {%- set dep_time = dep.actual or dep.estimated or dep.scheduled -%}
+          {%- set arr_time = arr.actual or arr.estimated or arr.scheduled -%}
+          {%- set dep_dt = dep_time and as_datetime(dep_time) -%}
+          {%- set arr_dt = arr_time and as_datetime(arr_time) -%}
+
+          {%- set dep_viewer_dt = dep_time and (as_datetime(dep_time) | as_local) -%}
+          {%- set arr_viewer_dt = arr_time and (as_datetime(arr_time) | as_local) -%}
+          {%- set dep_viewer = dep_viewer_dt and dep_viewer_dt.strftime('%H:%M') -%}
+          {%- set arr_viewer = arr_viewer_dt and arr_viewer_dt.strftime('%H:%M') -%}
+          {%- set show_dep_viewer = dep_viewer and (dep_tz != viewer_tz) and (dep_viewer != (dep_est_or_act or dep_sched)) -%}
+          {%- set show_arr_viewer = arr_viewer and (arr_tz != viewer_tz) and (arr_viewer != (arr_est_or_act or arr_sched)) -%}
+          {%- set show_viewer_row = not (dep_tz == viewer_tz and arr_tz == viewer_tz) -%}
+
+          {%- set show_strike_row = dep_changed or arr_changed -%}
+
+          {%- set dep_term = dep.terminal or '' -%}
+          {%- set dep_gate = dep.gate or '' -%}
+          {%- set arr_term = arr.terminal or '' -%}
+          {%- set arr_gate = arr.gate or '' -%}
+
+          {%- set dep_term_gate = (("Terminal " ~ dep_term) if dep_term else "") ~ ((" · Gate " ~ dep_gate) if dep_gate else "") -%}
+          {%- set arr_term_gate = (("Terminal " ~ arr_term) if arr_term else "") ~ ((" · Gate " ~ arr_gate) if arr_gate else "") -%}
+
+          {%- set show_term_gate_row = (dep_term_gate | trim) or (arr_term_gate | trim) -%}
+
+          {%- set pos = f.position if f.position is defined else {} -%}
+          {%- set pos_ts = pos.timestamp if pos.timestamp is defined else None -%}
+          {%- set now_dt = pos_ts and as_datetime(pos_ts) or now() -%}
+
+          {%- set total = (arr_dt and dep_dt) and (as_timestamp(arr_dt) - as_timestamp(dep_dt)) -%}
+          {%- set elapsed = (arr_dt and dep_dt) and (as_timestamp(now_dt) - as_timestamp(dep_dt)) -%}
+          {%- set pct = (total and elapsed) and (elapsed / total * 100) or 0 -%}
+          {%- if pct < 0 %}{% set pct = 0 %}{% endif -%}
+          {%- if pct > 100 %}{% set pct = 100 %}{% endif -%}
+
+          {%- set in_flight = route_state == 'En Route' -%}
+
+          {%- if in_flight -%}
+            {%- set pct_gap = 6 if pct < 6 else (94 if pct > 94 else pct) -%}
+            {%- set plane_x = pct_gap -%}
+          {%- elif route_state == 'Arrived' -%}
+            {%- set plane_x = 100 -%}
+          {%- else -%}
+            {%- set plane_x = 2 -%}
+          {%- endif -%}
+
+          {%- if route_state == 'Arrived' -%}
+            {%- set plane_transform = "translate(-100%, -50%)" -%}
+          {%- elif route_state == 'Scheduled' -%}
+            {%- set plane_transform = "translate(-50%, -50%)" -%}
+          {%- else -%}
+            {%- set plane_transform = "translate(-50%, -50%)" -%}
+          {%- endif -%}
+
+          {# -- cut width around plane, bigger for Scheduled/Arrived -- #}
+          {%- set plane_w_px = 22 -%}
+          {%- set gap_px = 3 -%}
+          {%- set sched_extra_px = 7 -%}
+          {%- set arrived_extra_px = 6 -%}
+          {%- set base_cut = (plane_w_px / 2) + gap_px -%}
+          {%- if route_state == 'Scheduled' -%}
+            {%- set cut_px = base_cut + sched_extra_px -%}
+          {%- elif route_state == 'Arrived' -%}
+            {%- set cut_px = base_cut + arrived_extra_px -%}
+          {%- else -%}
+            {%- set cut_px = base_cut -%}
+          {%- endif -%}
+
+          {%- if in_flight -%}
+            {%- set left_width = "calc(" ~ plane_x ~ "% - " ~ cut_px ~ "px)" -%}
+            {%- set right_left = "calc(" ~ plane_x ~ "% + " ~ cut_px ~ "px)" -%}
+            {%- set right_width = "calc(100% - " ~ plane_x ~ "% - " ~ cut_px ~ "px)" -%}
+          {%- elif route_state == 'Arrived' -%}
+            {%- set left_width = "calc(100% - " ~ cut_px ~ "px)" -%}
+            {%- set right_left = "100%" -%}
+            {%- set right_width = "0%" -%}
+          {%- else -%}
+            {%- set left_width = "0%" -%}
+            {%- set right_left = "calc(0% + " ~ cut_px ~ "px)" -%}
+            {%- set right_width = "calc(100% - " ~ cut_px ~ "px)" -%}
+          {%- endif -%}
+
+          {# -- remaining time for En Route only -- #}
+          {%- set remaining_label = None -%}
+          {%- if state == 'En Route' and arr_dt -%}
+            {%- set rem_sec = (as_timestamp(arr_dt) - as_timestamp(now_dt)) | round(0) -%}
+            {%- if rem_sec < 0 %}{% set rem_sec = 0 %}{% endif -%}
+            {%- set rem_min = (rem_sec / 60) | round(0) -%}
+            {%- set rem_h = (rem_min // 60) | int -%}
+            {%- set rem_m = (rem_min % 60) | int -%}
+            {%- if rem_h > 0 -%}
+              {%- set remaining_label = rem_h ~ "h " ~ rem_m ~ "m" -%}
+            {%- else -%}
+              {%- set remaining_label = rem_m ~ "m" -%}
+            {%- endif -%}
+          {%- endif -%}
+
+          {%- set updated = f.status_updated_at and as_datetime(f.status_updated_at) -%}
+          {%- set updated_ago = updated and ((as_timestamp(now()) - as_timestamp(updated)) / 60) | round(0) -%}
+          {%- set source = (f.status and f.status.provider) or '—' -%}
+
+          {%- set dep_label_line = dep_label ~ " · " ~ dep_date -%}
+          {%- set arr_label_line = arr_label ~ " · " ~ arr_date -%}
+          {%- set airline_logo = f.airline_logo_url or ("https://pics.avs.io/64/64/" ~ (f.airline_code | default('') | upper) ~ ".png") -%}
+          {%- set airline_name = f.airline_name or '' -%}
+
+          {# --- Diverted destination --- #}
+          {%- set diverted_air = f.get('diverted_to_airport') or {} -%}
+          {%- set diverted_iata = (f.get('diverted_to_iata') or diverted_air.get('iata') or '') -%}
+          {%- set diverted_code = diverted_iata and diverted_iata | upper -%}
+          {%- set diverted_label_raw = diverted_air.get('city') or diverted_air.get('name') or diverted_code -%}
+          {%- set diverted_label = diverted_label_raw | title -%}
+          {%- set has_diverted = (state == 'Diverted') and diverted_code -%}
+
+          {%- set header_arr_code = diverted_code if has_diverted else arr_code -%}
+          {%- set route_arr_code = diverted_code if has_diverted else arr_code -%}
+
+          {%- set arr_label_line = (("<span class='line-through opacity-60'>" ~ arr_label ~ " · " ~ arr_date ~ "</span> → " ~ diverted_label ~ " · " ~ arr_date) if has_diverted else (arr_label ~ " · " ~ arr_date)) -%}
 
           {
             "type": "custom:tailwindcss-template-card",
-            "content": "<div class='rounded-2xl bg-[rgba(255,255,255,0.04)] p-4 space-y-2'><div class='flex items-center gap-3'><img src='{{ f.airline_logo_url }}' class='h-6 w-6 object-contain rounded' /><div class='flex-1'><div class='text-lg font-semibold'>{{ f.airline_code }} {{ f.flight_number }} · {{ dep_code }} → {{ arr_code }} · {{ dep_date }}</div><div class='text-sm opacity-80'>{{ f.airline_name or '' }}{% if f.aircraft_type %} · {{ f.aircraft_type }}{% endif %}</div></div><span class='text-xs px-2 py-1 rounded-full {{ badge }}'>{{ state }}</span></div><div class='grid grid-cols-2 gap-3 text-sm'><div><div class='font-semibold'>{{ dep_label }} ({{ dep_code }})</div><div>{% if dep_changed %}<span class='line-through opacity-60'>{{ dep_sched }}</span> <span class='{{ time_color }} font-semibold'>{{ dep_est_or_act }}</span>{% else %}<span>{{ dep_est_or_act or dep_sched or '—' }}</span>{% endif %} {{ dep_tz }}</div>{% if dep_tz and dep_tz != viewer_tz and dep_viewer %}<div class='opacity-70'>{{ dep_viewer }} {{ viewer_tz }}</div>{% endif %}<div class='opacity-70'>T {{ dep.terminal or '—' }} / G {{ dep.gate or '—' }}</div></div><div><div class='font-semibold'>{{ arr_label }} ({{ arr_code }})</div><div>{% if arr_changed %}<span class='line-through opacity-60'>{{ arr_sched }}</span> <span class='{{ time_color }} font-semibold'>{{ arr_est_or_act }}</span>{% else %}<span>{{ arr_est_or_act or arr_sched or '—' }}</span>{% endif %} {{ arr_tz }}</div>{% if arr_tz and arr_tz != viewer_tz and arr_viewer %}<div class='opacity-70'>{{ arr_viewer }} {{ viewer_tz }}</div>{% endif %}<div class='opacity-70'>T {{ arr.terminal or '—' }} / G {{ arr.gate or '—' }}</div></div></div>{% if pax %}<div class='text-sm opacity-80'>Pax: {{ pax }}</div>{% endif %}</div>"
+            "content": "<div class='rounded-2xl bg-[rgba(255,255,255,0.04)] p-4 space-y-3'>\
+            <div class='flex items-center gap-3'>\
+              <img src='{{ airline_logo }}' class='h-12 w-12 object-contain rounded bg-white/90 p-1 ring-1 ring-white/30' />\
+              <div class='flex-1'>\
+                <div class='text-lg'>{{ f.airline_code }} {{ f.flight_number }} · {{ dep_date }}</div>\
+                <div class='text-sm opacity-80'>{{ airline_name }}{% if f.aircraft_type %} · {{ f.aircraft_type }}{% endif %}{% if f.duration_minutes is not none %} · {{ (f.duration_minutes or 0) // 60 }}h {{ (f.duration_minutes or 0) % 60 }}m{% endif %}</div>\
+              </div>\
+              <span class='text-xs px-2 py-1 rounded-full {{ badge }} text-center'>\
+                <div class='leading-tight'>{{ state }}</div>\
+                {% if remaining_label %}<div class='leading-tight opacity-90'>{{ remaining_label }} left</div>{% endif %}\
+              </span>\
+            </div>\
+            <div class='flex items-center gap-2 flex-nowrap'>\
+              <div class='text-xl sm:text-2xl font-semibold shrink-0 whitespace-nowrap'>{{ dep_code }}</div>\
+              <div class='flex-1 min-w-0'>\
+                <div class='relative w-full h-0.5'>\
+                  <div class='absolute left-0 top-0 h-0.5 rounded {{ route_bg }}' style='width: {{ left_width }};'></div>\
+                  <div class='absolute top-0 h-0.5 rounded bg-gray-300/60' style='left: {{ right_left }}; width: {{ right_width }};'></div>\
+                  <div class='absolute {{ route_color }}' style='left: {{ plane_x }}%; top: 50%; transform: {{ plane_transform }}; font-size:18px; font-weight:700;'>✈</div>\
+                </div>\
+              </div>\
+              <div class='text-xl sm:text-2xl font-semibold shrink-0 whitespace-nowrap'>{{ route_arr_code }}</div>\
+            </div>\
+            <div class='grid grid-cols-2 gap-x-4 gap-y-1 text-sm'>\
+              <div class='opacity-80'>{{ dep_label_line }}</div><div class='opacity-80'>{{ arr_label_line }}</div>\
+              <div class='opacity-70'>{{ 'Departed' if dep_act else 'Scheduled Departure' }}</div><div class='opacity-70'>{{ 'Estimated Arrival' if arr_est_or_act else 'Scheduled Arrival' }}</div>\
+              <div class='text-2xl font-semibold {{ time_color }}'>{% if dep_changed %}{{ dep_est_or_act }}{% else %}{{ dep_est_or_act or dep_sched or '—' }}{% endif %}<span class='text-xs opacity-70 ml-1'>{{ dep_tz }}</span></div>\
+              <div class='text-2xl font-semibold {{ time_color }}'>{% if arr_changed %}{{ arr_est_or_act }}{% else %}{{ arr_est_or_act or arr_sched or '—' }}{% endif %}<span class='text-xs opacity-70 ml-1'>{{ arr_tz }}</span></div>\
+              {% if show_strike_row %}\
+              <div class='line-through opacity-50 {% if not dep_changed %}opacity-0{% endif %}'>{% if dep_changed %}{{ dep_sched }}{% else %}&nbsp;{% endif %}</div>\
+              <div class='line-through opacity-50 {% if not arr_changed %}opacity-0{% endif %}'>{% if arr_changed %}{{ arr_sched }}{% else %}&nbsp;{% endif %}</div>\
+              {% endif %}\
+              {% if show_viewer_row %}\
+              <div class='opacity-70 {% if not show_dep_viewer %}opacity-0{% endif %}'>{% if show_dep_viewer %}{{ dep_viewer }} {{ viewer_tz }}{% else %}&nbsp;{% endif %}</div>\
+              <div class='opacity-70 {% if not show_arr_viewer %}opacity-0{% endif %}'>{% if show_arr_viewer %}{{ arr_viewer }} {{ viewer_tz }}{% else %}&nbsp;{% endif %}</div>\
+              {% endif %}\
+              {% if show_term_gate_row %}\
+              <div class='opacity-70'>{{ dep_term_gate }}</div>\
+              <div class='opacity-70'>{{ arr_term_gate }}</div>\
+              {% endif %}\
+            </div>\
+            {% if pax %}<div class='text-sm opacity-80'>Travellers: {{ pax }}</div>{% endif %}\
+            <div class='text-xs opacity-60'>Updated {{ updated_ago or '—' }} min ago · Source: {{ source }}</div>\
+          </div>"
           }{{ "," if not loop.last else "" }}
 
-        {%- endfor -%}
-        ]
+        {%- endfor -%} ]
+
 ```
 
 #### Diagnostics

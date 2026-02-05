@@ -31,16 +31,20 @@ OPENFLIGHTS_AIRPORTS_URL = "https://raw.githubusercontent.com/jpatokal/openfligh
 OPENFLIGHTS_AIRPORTS_CACHE_KEY = "openflights_airports_cache"
 
 
-async def _get_openflights_airports_index(hass: HomeAssistant) -> dict[str, dict[str, Any]] | None:
-    """Download and cache OpenFlights airports.dat as a dict keyed by IATA."""
+
+async def _get_openflights_airports_index(
+    hass: HomeAssistant,
+    url: str,
+) -> dict[str, dict[str, Any]] | None:
+    """Download and cache an airports.dat-style file as a dict keyed by IATA."""
     cache = hass.data.setdefault(DOMAIN, {})
     cached = cache.get(OPENFLIGHTS_AIRPORTS_CACHE_KEY)
-    if isinstance(cached, dict) and cached.get("index"):
+    if isinstance(cached, dict) and cached.get("index") and cached.get("url") == url:
         return cached["index"]
 
     try:
         session = async_get_clientsession(hass)
-        async with session.get(OPENFLIGHTS_AIRPORTS_URL, timeout=30) as resp:
+        async with session.get(url, timeout=30) as resp:
             if resp.status != 200:
                 return None
             text = await resp.text()
@@ -80,16 +84,21 @@ async def _get_openflights_airports_index(hass: HomeAssistant) -> dict[str, dict
     except Exception:
         return None
 
-    cache[OPENFLIGHTS_AIRPORTS_CACHE_KEY] = {"index": index}
+    cache[OPENFLIGHTS_AIRPORTS_CACHE_KEY] = {"index": index, "url": url}
     return index
 
 
-async def async_get_openflights_airport(hass: HomeAssistant, iata: str) -> dict[str, Any] | None:
-    """Fetch a single airport from OpenFlights and cache it."""
+async def async_get_openflights_airport(
+    hass: HomeAssistant,
+    iata: str,
+    url: str | None = None,
+) -> dict[str, Any] | None:
+    """Fetch a single airport from an airports.dat-style file and cache it."""
     code = (iata or "").strip().upper()
     if not code:
         return None
-    index = await _get_openflights_airports_index(hass)
+    src = (url or "").strip() or OPENFLIGHTS_AIRPORTS_URL
+    index = await _get_openflights_airports_index(hass, src)
     if not isinstance(index, dict):
         return None
     return index.get(code)
@@ -109,6 +118,11 @@ def _get_option(options: dict[str, Any], key: str, default: Any) -> Any:
     return val if val is not None else default
 
 
+def _directory_source(options: dict[str, Any]) -> str:
+    src = str(options.get("directory_source", "auto") or "auto").strip().lower()
+    return src
+
+
 async def get_airport(hass: HomeAssistant, options: dict[str, Any], iata: str) -> dict[str, Any] | None:
     iata = (iata or "").strip().upper()
     if not iata:
@@ -116,6 +130,8 @@ async def get_airport(hass: HomeAssistant, options: dict[str, Any], iata: str) -
 
     cache_enabled = bool(_get_option(options, "cache_directory", True))
     ttl_days = int(_get_option(options, "cache_ttl_days", 90))
+    source = _directory_source(options)
+    airports_url = str(_get_option(options, "directory_airports_url", "")).strip() or OPENFLIGHTS_AIRPORTS_URL
 
     def _is_complete_airport(data: dict[str, Any] | None) -> bool:
         if not isinstance(data, dict):
@@ -136,11 +152,11 @@ async def get_airport(hass: HomeAssistant, options: dict[str, Any], iata: str) -
     fr24_active_key = fr24_sandbox_key if fr24_use_sandbox and fr24_sandbox_key else fr24_key
 
     providers = []
-    if av_key and not is_blocked(hass, "aviationstack"):
+    if source in ("auto", "aviationstack") and av_key and not is_blocked(hass, "aviationstack"):
         providers.append(AviationstackDirectoryProvider(hass, av_key))
-    if al_key and not is_blocked(hass, "airlabs"):
+    if source in ("auto", "airlabs") and al_key and not is_blocked(hass, "airlabs"):
         providers.append(AirLabsDirectoryProvider(hass, al_key))
-    if fr24_active_key and not is_blocked(hass, "fr24"):
+    if source in ("auto", "fr24") and fr24_active_key and not is_blocked(hass, "fr24"):
         providers.append(FR24DirectoryProvider(hass, fr24_active_key, use_sandbox=fr24_use_sandbox, api_version=fr24_version))
 
     for p in providers:
@@ -158,9 +174,14 @@ async def get_airport(hass: HomeAssistant, options: dict[str, Any], iata: str) -
                 await async_set_airport(hass, iata, merged)
             return merged
 
-    # Fallback: OpenFlights airports.dat
+    # Fallback: airports.dat (OpenFlights or user-provided URL)
+    if source == "custom" and not airports_url:
+        airports_url = OPENFLIGHTS_AIRPORTS_URL
     try:
-        index = await _get_openflights_airports_index(hass)
+        if source in ("auto", "openflights", "custom", "aviationstack", "airlabs", "fr24"):
+            index = await _get_openflights_airports_index(hass, airports_url)
+        else:
+            index = None
         if isinstance(index, dict):
             data = index.get(iata)
             if data:
@@ -180,6 +201,8 @@ async def get_airline(hass: HomeAssistant, options: dict[str, Any], iata: str) -
 
     cache_enabled = bool(_get_option(options, "cache_directory", True))
     ttl_days = int(_get_option(options, "cache_ttl_days", 90))
+    source = _directory_source(options)
+    airlines_url = str(_get_option(options, "directory_airlines_url", "")).strip() or OPENFLIGHTS_AIRLINES_URL
 
     if cache_enabled:
         cached = await async_get_airline(hass, iata)
@@ -190,9 +213,9 @@ async def get_airline(hass: HomeAssistant, options: dict[str, Any], iata: str) -
     al_key = (options.get("airlabs_api_key") or "").strip()
 
     providers = []
-    if av_key:
+    if source in ("auto", "aviationstack") and av_key:
         providers.append(AviationstackDirectoryProvider(hass, av_key))
-    if al_key:
+    if source in ("auto", "airlabs") and al_key:
         providers.append(AirLabsDirectoryProvider(hass, al_key))
 
     for p in providers:
@@ -206,40 +229,38 @@ async def get_airline(hass: HomeAssistant, options: dict[str, Any], iata: str) -
                 await async_set_airline(hass, iata, data)
             return data
 
-    # Fallback: OpenFlights airlines.dat (IATA/ICAO/Name/Country/Active)
+    # Fallback: airlines.dat (OpenFlights or user-provided URL)
+    if source == "custom" and not airlines_url:
+        airlines_url = OPENFLIGHTS_AIRLINES_URL
     try:
         session = async_get_clientsession(hass)
-        async with session.get(OPENFLIGHTS_AIRLINES_URL, timeout=30) as resp:
-            if resp.status == 200:
-                text = await resp.text()
-                for line in StringIO(text):
-                    line = line.strip()
-                    if not line:
-                        continue
-                    # Format: Airline ID, Name, Alias, IATA, ICAO, Callsign, Country, Active
-                    parts = [p.strip().strip('"') for p in line.split(",")]
-                    if len(parts) < 8:
-                        continue
-                    name = parts[1]
-                    iata_code = parts[3].upper() if parts[3] else ""
-                    icao_code = parts[4].upper() if parts[4] else ""
-                    callsign = parts[5]
-                    country = parts[6]
-                    active = parts[7]
-                    if iata_code != iata:
-                        continue
-                    data = {
-                        "iata": iata_code,
-                        "icao": icao_code or None,
-                        "name": name or None,
-                        "country": country or None,
-                        "active": active or None,
-                        "callsign": callsign or None,
-                        "source": "openflights",
-                    }
-                    if cache_enabled:
-                        await async_set_airline(hass, iata, data)
-                    return data
+        if source in ("auto", "openflights", "custom", "aviationstack", "airlabs", "fr24"):
+            async with session.get(airlines_url, timeout=30) as resp:
+                if resp.status == 200:
+                    text = await resp.text()
+                    for line in StringIO(text):
+                        line = line.strip()
+                        if not line:
+                            continue
+                        # Format: Airline ID, Name, Alias, IATA, ICAO, Callsign, Country, Active
+                        parts = [p.strip().strip('"') for p in line.split(",")]
+                        if len(parts) < 8:
+                            continue
+                        iata_code = (parts[3] or "").strip().upper()
+                        if not iata_code or iata_code == "\\N":
+                            continue
+                        if iata_code != iata:
+                            continue
+                        data = {
+                            "iata": iata_code,
+                            "icao": (parts[4] or "").strip() or None,
+                            "name": (parts[1] or "").strip() or None,
+                            "country": (parts[6] or "").strip() or None,
+                            "source": "openflights",
+                        }
+                        if cache_enabled:
+                            await async_set_airline(hass, iata, data)
+                        return data
     except Exception as e:
         _LOGGER.debug("OpenFlights airline fallback failed for %s: %s", iata, e)
 

@@ -159,6 +159,11 @@ def _pick_segments_from_flights(payload: Any) -> list[dict[str, Any]]:
         arr_code = item.get("arrivalAirportCode")
         dep_time = item.get("departureTime")
         arr_time = item.get("arrivalTime")
+        status_text = (
+            item.get("displayStatus")
+            or item.get("display_status")
+            or item.get("status")
+        )
         out.append(
             {
                 "dep_iata": dep_code,
@@ -167,10 +172,23 @@ def _pick_segments_from_flights(payload: Any) -> list[dict[str, Any]]:
                 "arr_time": arr_time,
                 "airline_name": item.get("airline"),
                 "airline_code": item.get("airlineCode"),
-                "status": item.get("displayStatus") or item.get("status"),
+                "status": status_text,
             }
         )
     return out
+
+
+def _pick_status_text(*objs: Any) -> str | None:
+    for obj in objs:
+        if not isinstance(obj, dict):
+            continue
+        val = obj.get("displayStatus") or obj.get("display_status") or obj.get("status")
+        if isinstance(val, str) and val.strip():
+            return val
+        if isinstance(val, (int, float)):
+            # Keep numeric as last resort; caller may still normalize to Unknown.
+            return str(val)
+    return None
 
 
 class FlightAPIStatusProvider:
@@ -333,7 +351,7 @@ class FlightAPIStatusProvider:
 
         details = {
             "provider": "flightapi",
-            "state": (status_obj or {}).get("status") or (dep_obj or {}).get("status") or (arr_obj or {}).get("status") or "unknown",
+            "state": _pick_status_text(status_obj, dep_obj, arr_obj) or "unknown",
             "dep_scheduled": dep_sched,
             "dep_estimated": dep_est,
             "dep_actual": dep_act,

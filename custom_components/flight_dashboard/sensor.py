@@ -266,7 +266,11 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
             if dep_air.get("iata") and (not dep_air.get("name") or not dep_air.get("city") or not dep_air.get("tz")):
                 airport = await get_airport(self.hass, options, dep_air.get("iata"))
                 if not airport:
-                    airport = await async_get_openflights_airport(self.hass, dep_air.get("iata"))
+                    airport = await async_get_openflights_airport(
+                        self.hass,
+                        dep_air.get("iata"),
+                        url=options.get("directory_airports_url"),
+                    )
                 if airport:
                     if not dep_air.get("name") and airport.get("name"):
                         dep_air["name"] = airport.get("name")
@@ -281,7 +285,11 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
             if arr_air.get("iata") and (not arr_air.get("name") or not arr_air.get("city") or not arr_air.get("tz")):
                 airport = await get_airport(self.hass, options, arr_air.get("iata"))
                 if not airport:
-                    airport = await async_get_openflights_airport(self.hass, arr_air.get("iata"))
+                    airport = await async_get_openflights_airport(
+                        self.hass,
+                        arr_air.get("iata"),
+                        url=options.get("directory_airports_url"),
+                    )
                 if airport:
                     if not arr_air.get("name") and airport.get("name"):
                         arr_air["name"] = airport.get("name")

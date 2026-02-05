@@ -28,6 +28,9 @@ CONF_AUTO_PRUNE_LANDED = "auto_prune_landed"
 CONF_PRUNE_LANDED_HOURS = "prune_landed_hours"
 CONF_CACHE_DIRECTORY = "cache_directory"
 CONF_CACHE_TTL_DAYS = "cache_ttl_days"
+CONF_DIRECTORY_AIRPORTS_URL = "directory_airports_url"
+CONF_DIRECTORY_AIRLINES_URL = "directory_airlines_url"
+CONF_DIRECTORY_SOURCE = "directory_source"
 
 # Status options
 CONF_STATUS_PROVIDER = "status_provider"  # local|aviationstack|airlabs|opensky|flightradar24
@@ -58,18 +61,21 @@ CONF_TRIPIT_AUTHORIZE_NOW = "tripit_authorize_now"
 CONF_TRIPIT_VERIFIER = "tripit_verifier"
 
 DEFAULT_ITINERARY_PROVIDERS = ["manual"]
-DEFAULT_DAYS_AHEAD = 30
-DEFAULT_INCLUDE_PAST_HOURS = 6
+DEFAULT_DAYS_AHEAD = 120
+DEFAULT_INCLUDE_PAST_HOURS = 24
 DEFAULT_MAX_FLIGHTS = 50
 DEFAULT_MERGE_TOLERANCE_HOURS = 6
-DEFAULT_AUTO_PRUNE_LANDED = False
-DEFAULT_PRUNE_LANDED_HOURS = 0
+DEFAULT_AUTO_PRUNE_LANDED = True
+DEFAULT_PRUNE_LANDED_HOURS = 1
 DEFAULT_CACHE_DIRECTORY = True
 DEFAULT_CACHE_TTL_DAYS = 90
+DEFAULT_DIRECTORY_AIRPORTS_URL = "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat"
+DEFAULT_DIRECTORY_AIRLINES_URL = "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airlines.dat"
+DEFAULT_DIRECTORY_SOURCE = "custom"
 
-DEFAULT_STATUS_PROVIDER = "flightradar24"
-DEFAULT_POSITION_PROVIDER = "same_as_status"
-DEFAULT_SCHEDULE_PROVIDER = "auto"
+DEFAULT_STATUS_PROVIDER = "flightapi"
+DEFAULT_POSITION_PROVIDER = "flightradar24"
+DEFAULT_SCHEDULE_PROVIDER = "flightapi"
 DEFAULT_STATUS_TTL_MINUTES = 5
 DEFAULT_DELAY_GRACE_MINUTES = 10
 
@@ -113,6 +119,9 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
             options[CONF_PRUNE_LANDED_HOURS] = int(user_input.get(CONF_PRUNE_LANDED_HOURS, 0))
             options[CONF_CACHE_DIRECTORY] = bool(user_input.get(CONF_CACHE_DIRECTORY, DEFAULT_CACHE_DIRECTORY))
             options[CONF_CACHE_TTL_DAYS] = int(user_input.get(CONF_CACHE_TTL_DAYS, DEFAULT_CACHE_TTL_DAYS))
+            options[CONF_DIRECTORY_AIRPORTS_URL] = user_input.get(CONF_DIRECTORY_AIRPORTS_URL, "").strip()
+            options[CONF_DIRECTORY_AIRLINES_URL] = user_input.get(CONF_DIRECTORY_AIRLINES_URL, "").strip()
+            options[CONF_DIRECTORY_SOURCE] = user_input.get(CONF_DIRECTORY_SOURCE, DEFAULT_DIRECTORY_SOURCE)
 
             # Status
             options[CONF_STATUS_PROVIDER] = user_input[CONF_STATUS_PROVIDER]
@@ -152,6 +161,9 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
         prune_hours = options.get(CONF_PRUNE_LANDED_HOURS, DEFAULT_PRUNE_LANDED_HOURS)
         cache_dir = options.get(CONF_CACHE_DIRECTORY, DEFAULT_CACHE_DIRECTORY)
         cache_ttl_days = options.get(CONF_CACHE_TTL_DAYS, DEFAULT_CACHE_TTL_DAYS)
+        directory_airports_url = options.get(CONF_DIRECTORY_AIRPORTS_URL, DEFAULT_DIRECTORY_AIRPORTS_URL)
+        directory_airlines_url = options.get(CONF_DIRECTORY_AIRLINES_URL, DEFAULT_DIRECTORY_AIRLINES_URL)
+        directory_source = options.get(CONF_DIRECTORY_SOURCE, DEFAULT_DIRECTORY_SOURCE)
 
         status_provider = options.get(CONF_STATUS_PROVIDER, DEFAULT_STATUS_PROVIDER)
         position_provider = options.get(CONF_POSITION_PROVIDER, DEFAULT_POSITION_PROVIDER)
@@ -225,6 +237,46 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
             )
         )
 
+        number_minutes = selector.NumberSelector(
+            selector.NumberSelectorConfig(min=1, max=120, step=1, mode=selector.NumberSelectorMode.SLIDER, unit_of_measurement="min")
+        )
+        number_minutes_small = selector.NumberSelector(
+            selector.NumberSelectorConfig(min=0, max=60, step=1, mode=selector.NumberSelectorMode.SLIDER, unit_of_measurement="min")
+        )
+        number_hours_0_72 = selector.NumberSelector(
+            selector.NumberSelectorConfig(min=0, max=72, step=1, mode=selector.NumberSelectorMode.SLIDER, unit_of_measurement="h")
+        )
+        number_hours_0_168 = selector.NumberSelector(
+            selector.NumberSelectorConfig(min=0, max=168, step=1, mode=selector.NumberSelectorMode.SLIDER, unit_of_measurement="h")
+        )
+        number_hours_0_48 = selector.NumberSelector(
+            selector.NumberSelectorConfig(min=0, max=48, step=1, mode=selector.NumberSelectorMode.SLIDER, unit_of_measurement="h")
+        )
+        number_days = selector.NumberSelector(
+            selector.NumberSelectorConfig(min=1, max=365, step=1, mode=selector.NumberSelectorMode.SLIDER, unit_of_measurement="days")
+        )
+        number_days_ttl = selector.NumberSelector(
+            selector.NumberSelectorConfig(min=1, max=3650, step=1, mode=selector.NumberSelectorMode.SLIDER, unit_of_measurement="days")
+        )
+        number_flights = selector.NumberSelector(
+            selector.NumberSelectorConfig(min=1, max=200, step=1, mode=selector.NumberSelectorMode.SLIDER)
+        )
+
+        directory_selector = selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=[
+                    selector.SelectOptionDict(value="auto", label="Auto (best available)"),
+                    selector.SelectOptionDict(value="aviationstack", label="Aviationstack"),
+                    selector.SelectOptionDict(value="airlabs", label="AirLabs"),
+                    selector.SelectOptionDict(value="fr24", label="Flightradar24"),
+                    selector.SelectOptionDict(value="openflights", label="OpenFlights (airports.dat)"),
+                    selector.SelectOptionDict(value="custom", label="Custom airports.dat/airlines.dat URL"),
+                ],
+                multiple=False,
+                mode=selector.SelectSelectorMode.DROPDOWN,
+            )
+        )
+
         schema_dict: dict[Any, Any] = {
             # Providers
             vol.Required(CONF_SCHEDULE_PROVIDER, default=schedule_provider): schedule_selector,
@@ -256,10 +308,10 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
         # Refresh & rate limits
         schema_dict.update(
             {
-                vol.Required(CONF_STATUS_TTL_MINUTES, default=ttl): vol.All(int, vol.Clamp(min=1, max=120)),
-                vol.Required(CONF_DELAY_GRACE_MINUTES, default=grace): vol.All(int, vol.Clamp(min=0, max=60)),
-                vol.Required(CONF_INCLUDE_PAST_HOURS, default=include_past): vol.All(int, vol.Clamp(min=0, max=72)),
-                vol.Required(CONF_DAYS_AHEAD, default=days_ahead): vol.All(int, vol.Clamp(min=1, max=365)),
+                vol.Required(CONF_STATUS_TTL_MINUTES, default=ttl): number_minutes,
+                vol.Required(CONF_DELAY_GRACE_MINUTES, default=grace): number_minutes_small,
+                vol.Required(CONF_INCLUDE_PAST_HOURS, default=include_past): number_hours_0_72,
+                vol.Required(CONF_DAYS_AHEAD, default=days_ahead): number_days,
             }
         )
 
@@ -267,7 +319,10 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
         schema_dict.update(
             {
                 vol.Optional(CONF_CACHE_DIRECTORY, default=cache_dir): bool,
-                vol.Optional(CONF_CACHE_TTL_DAYS, default=cache_ttl_days): vol.All(int, vol.Clamp(min=1, max=3650)),
+                vol.Optional(CONF_CACHE_TTL_DAYS, default=cache_ttl_days): number_days_ttl,
+                vol.Optional(CONF_DIRECTORY_SOURCE, default=directory_source): directory_selector,
+                vol.Optional(CONF_DIRECTORY_AIRPORTS_URL, default=directory_airports_url): str,
+                vol.Optional(CONF_DIRECTORY_AIRLINES_URL, default=directory_airlines_url): str,
             }
         )
 
@@ -275,15 +330,15 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
         schema_dict.update(
             {
                 vol.Optional(CONF_AUTO_PRUNE_LANDED, default=auto_prune): bool,
-                vol.Optional(CONF_PRUNE_LANDED_HOURS, default=prune_hours): vol.All(int, vol.Clamp(min=0, max=168)),
+                vol.Optional(CONF_PRUNE_LANDED_HOURS, default=prune_hours): number_hours_0_168,
             }
         )
 
         # Advanced list behavior
         schema_dict.update(
             {
-                vol.Required(CONF_MAX_FLIGHTS, default=max_flights): vol.All(int, vol.Clamp(min=1, max=200)),
-                vol.Required(CONF_MERGE_TOLERANCE_HOURS, default=tolerance): vol.All(int, vol.Clamp(min=0, max=48)),
+                vol.Required(CONF_MAX_FLIGHTS, default=max_flights): number_flights,
+                vol.Required(CONF_MERGE_TOLERANCE_HOURS, default=tolerance): number_hours_0_48,
             }
         )
 
