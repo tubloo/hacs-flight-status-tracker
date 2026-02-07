@@ -36,9 +36,14 @@ async def _notify(_hass: HomeAssistant, title: str, message: str) -> None:
 
 
 def _extract_flight_key(selected: str) -> str:
-    if " | " not in selected:
+    # Accept either a raw flight_key (preferred) or a "flight_key | label" style
+    # option from older dashboards.
+    sel = (selected or "").strip()
+    if not sel or sel in ("unknown", "unavailable", "No flights"):
         return ""
-    return selected.split(" | ", 1)[0].strip()
+    if " | " in sel:
+        return sel.split(" | ", 1)[0].strip()
+    return sel
 
 
 def _is_visible_in_upcoming(hass: HomeAssistant, flight_key: str) -> bool:
