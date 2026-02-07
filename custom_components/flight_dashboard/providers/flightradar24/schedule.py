@@ -11,7 +11,7 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant
 
-from ...fr24_client import FR24Client, FR24Error
+from .client import FR24Client, FR24Error
 
 
 @dataclass

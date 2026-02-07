@@ -18,13 +18,13 @@ from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, SIGNAL_MANUAL_FLIGHTS_UPDATED, EVENT_UPDATED
 from .coordinator_agg import merge_segments
-from .providers.itinerary.manual import ManualItineraryProvider
+from .providers.manual.itinerary import ManualItineraryProvider
 from .manual_store import async_remove_manual_flight, async_update_manual_flight
 from .status_manager import async_update_statuses
 from .status_resolver import _normalize_iso_in_tz
 from .tz_short import tz_short_name
 from .directory import get_airport, get_airline, warm_directory_cache
-from .fr24_client import FR24Client, FR24RateLimitError, FR24Error
+from .providers.flightradar24.client import FR24Client, FR24RateLimitError, FR24Error
 from .rate_limit import get_blocks, is_blocked, get_block_until, get_block_reason, set_block
 from .selected import get_selected_flight, get_flight_position
 
@@ -81,8 +81,9 @@ PROVIDER_BLOCK_REFRESH = timedelta(minutes=1)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities) -> None:
+    upcoming = FlightDashboardUpcomingFlightsSensor(hass, entry)
     entities = [
-        FlightDashboardUpcomingFlightsSensor(hass, entry),
+        upcoming,
         FlightDashboardSelectedFlightSensor(hass, entry),
         FlightDashboardFr24UsageSensor(hass, entry),
         FlightDashboardProviderBlockSensor(hass, entry),
@@ -94,6 +95,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities) -> N
     if FlightDashboardAddPreviewSensor:
         entities.append(FlightDashboardAddPreviewSensor(hass, entry))
     async_add_entities(entities, True)
+    hass.data.setdefault(DOMAIN, {}).setdefault("upcoming_sensors", {})[entry.entry_id] = upcoming
 
 
 class FlightDashboardUpcomingFlightsSensor(SensorEntity):
@@ -126,6 +128,9 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
         if self._next_refresh_unsub:
             self._next_refresh_unsub()
             self._next_refresh_unsub = None
+        sensors = self.hass.data.get(DOMAIN, {}).get("upcoming_sensors") or {}
+        if isinstance(sensors, dict):
+            sensors.pop(self.entry.entry_id, None)
 
     @property
     def native_value(self) -> str:
@@ -153,7 +158,8 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
         days_ahead = int(options.get("days_ahead", 30))
         max_flights = int(options.get("max_flights", 50))
         auto_prune = bool(options.get("auto_prune_landed", False))
-        prune_hours = int(options.get("prune_landed_hours", 0))
+        prune_hours_raw = int(options.get("prune_landed_hours", 0))
+        prune_hours = max(1, prune_hours_raw) if auto_prune else prune_hours_raw
 
         start = now - timedelta(hours=include_past)
         end = now + timedelta(days=days_ahead)
@@ -166,7 +172,7 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
 
         if "tripit" in providers:
             try:
-                from .providers.itinerary.tripit import TripItItineraryProvider
+                from .providers.tripit.itinerary import TripItItineraryProvider
             except Exception as e:
                 _LOGGER.debug("TripIt provider not available: %s", e)
             else:

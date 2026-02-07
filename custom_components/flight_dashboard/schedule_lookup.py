@@ -121,6 +121,7 @@ async def lookup_schedule(
     date_str: str,
     dep_airport: str | None = None,
     arr_airport: str | None = None,
+    log_errors: bool = True,
 ) -> dict[str, Any]:
     """Lookup a flight schedule and return a canonical flight dict.
 
@@ -186,7 +187,7 @@ async def lookup_schedule(
     # Import lazily so missing deps won't crash HA if provider not used
     if "flightradar24" in order and fr24_active_key and not is_blocked(hass, "fr24"):
         try:
-            from .providers.status.flightradar24 import Flightradar24StatusProvider
+            from .providers.flightradar24.status import Flightradar24StatusProvider
         except Exception as e:
             _LOGGER.warning("FR24 status provider import failed: %s", e)
             Flightradar24StatusProvider = None  # type: ignore
@@ -216,7 +217,10 @@ async def lookup_schedule(
                 set_block(hass, "fr24", block_for, reason)
                 st = None
             if st and st.get("error"):
-                _LOGGER.warning("FR24 schedule lookup error: %s", st.get("detail") or st.get("error"))
+                if log_errors:
+                    _LOGGER.warning("FR24 schedule lookup error: %s", st.get("detail") or st.get("error"))
+                else:
+                    _LOGGER.debug("FR24 schedule lookup error: %s", st.get("detail") or st.get("error"))
                 err = st.get("error")
                 if err == "quota_exceeded":
                     return {"error": "provider_error", "hint": "FR24 quota exceeded. Try again later."}
@@ -268,7 +272,7 @@ async def lookup_schedule(
 
     if "aviationstack" in order and av_key and not is_blocked(hass, "aviationstack"):
         try:
-            from .providers.status.aviationstack import AviationstackStatusProvider
+            from .providers.aviationstack.status import AviationstackStatusProvider
         except Exception:
             AviationstackStatusProvider = None  # type: ignore
 
@@ -318,7 +322,10 @@ async def lookup_schedule(
                 set_block(hass, "aviationstack", block_for, reason)
                 details = None
             if isinstance(details, dict) and details.get("error"):
-                _LOGGER.warning("Aviationstack schedule lookup error: %s", details.get("error"))
+                if log_errors:
+                    _LOGGER.warning("Aviationstack schedule lookup error: %s", details.get("error"))
+                else:
+                    _LOGGER.debug("Aviationstack schedule lookup error: %s", details.get("error"))
                 if details.get("error") == "quota_exceeded":
                     return {"error": "provider_error", "hint": "Aviationstack quota exceeded. Try again later."}
                 if details.get("error") == "rate_limited":
@@ -326,7 +333,7 @@ async def lookup_schedule(
 
     if "airlabs" in order and al_key and not is_blocked(hass, "airlabs"):
         try:
-            from .providers.status.airlabs import AirLabsStatusProvider
+            from .providers.airlabs.status import AirLabsStatusProvider
         except Exception:
             AirLabsStatusProvider = None  # type: ignore
 
@@ -376,7 +383,10 @@ async def lookup_schedule(
                 set_block(hass, "airlabs", block_for, reason)
                 details = None
             if isinstance(details, dict) and details.get("error"):
-                _LOGGER.warning("AirLabs schedule lookup error: %s", details.get("error"))
+                if log_errors:
+                    _LOGGER.warning("AirLabs schedule lookup error: %s", details.get("error"))
+                else:
+                    _LOGGER.debug("AirLabs schedule lookup error: %s", details.get("error"))
                 if details.get("error") == "quota_exceeded":
                     return {"error": "provider_error", "hint": "AirLabs quota exceeded. Try again later."}
                 if details.get("error") == "rate_limited":
@@ -390,7 +400,7 @@ async def lookup_schedule(
         )
     if "flightapi" in order and fa_key and not is_blocked(hass, "flightapi"):
         try:
-            from .providers.status.flightapi import FlightAPIStatusProvider
+            from .providers.flightapi.status import FlightAPIStatusProvider
         except Exception as e:
             _LOGGER.warning("FlightAPI provider import failed: %s", e)
             FlightAPIStatusProvider = None  # type: ignore
@@ -448,7 +458,10 @@ async def lookup_schedule(
                 details = None
             if isinstance(details, dict) and details.get("error"):
                 err = details.get("error")
-                _LOGGER.warning("FlightAPI schedule lookup error: %s", details.get("error_message") or err)
+                if log_errors:
+                    _LOGGER.warning("FlightAPI schedule lookup error: %s", details.get("error_message") or err)
+                else:
+                    _LOGGER.debug("FlightAPI schedule lookup error: %s", details.get("error_message") or err)
                 if err == "quota_exceeded":
                     return {"error": "provider_error", "hint": "FlightAPI.io quota exceeded. Try again later.", "provider": "flightapi"}
                 if err == "rate_limited":

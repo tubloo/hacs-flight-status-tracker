@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from .base import FlightStatus
+from .._shared.status_base import FlightStatus
 
 
 def _utc(dt: datetime) -> datetime:

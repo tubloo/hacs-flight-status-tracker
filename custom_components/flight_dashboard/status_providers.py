@@ -74,7 +74,7 @@ async def async_fetch_status(
     if provider == "flightradar24" and fr24_active_key:
         if is_blocked(hass, "fr24"):
             return None
-        from .providers.status.flightradar24 import Flightradar24StatusProvider
+        from .providers.flightradar24.status import Flightradar24StatusProvider
 
         res = await Flightradar24StatusProvider(
             hass, api_key=fr24_active_key, use_sandbox=use_sandbox, api_version=fr24_version
@@ -90,7 +90,7 @@ async def async_fetch_status(
     if provider == "aviationstack" and av_key:
         if is_blocked(hass, "aviationstack"):
             return None
-        from .providers.status.aviationstack import AviationstackStatusProvider
+        from .providers.aviationstack.status import AviationstackStatusProvider
 
         res = await AviationstackStatusProvider(hass, av_key).async_get_status(flight)
         out = _unwrap_status(res)
@@ -104,7 +104,7 @@ async def async_fetch_status(
     if provider == "airlabs" and al_key:
         if is_blocked(hass, "airlabs"):
             return None
-        from .providers.status.airlabs import AirLabsStatusProvider
+        from .providers.airlabs.status import AirLabsStatusProvider
 
         res = await AirLabsStatusProvider(hass, al_key).async_get_status(flight)
         out = _unwrap_status(res)
@@ -118,7 +118,7 @@ async def async_fetch_status(
     if provider == "flightapi" and fa_key:
         if is_blocked(hass, "flightapi"):
             return None
-        from .providers.status.flightapi import FlightAPIStatusProvider
+        from .providers.flightapi.status import FlightAPIStatusProvider
 
         res = await FlightAPIStatusProvider(hass, fa_key).async_get_status(flight)
         out = _unwrap_status(res)
@@ -131,13 +131,13 @@ async def async_fetch_status(
 
     if provider == "opensky" and (os_user or os_pass):
         # OpenSky can work without auth but is rate-limited; only use if configured
-        from .providers.status.opensky import OpenSkyEnrichmentProvider
+        from .providers.opensky.status import OpenSkyEnrichmentProvider
 
         res = await OpenSkyEnrichmentProvider(hass).async_get_status(flight)
         return _unwrap_status(res)
 
     if provider == "local":
-        from .providers.status.local import LocalStatusProvider
+        from .providers.local.status import LocalStatusProvider
 
         dep = _parse_dt((flight.get("dep") or {}).get("scheduled"))
         if dep is None:
@@ -156,7 +156,7 @@ async def async_fetch_status(
         return _unwrap_status(res)
 
     if provider == "mock":
-        from .providers.status.mock import MockStatusProvider
+        from .providers.mock.status import MockStatusProvider
 
         res = await MockStatusProvider().async_get_status(flight)
         return _unwrap_status(res)
@@ -165,7 +165,7 @@ async def async_fetch_status(
     if fr24_key:
         if is_blocked(hass, "fr24"):
             return None
-        from .providers.status.flightradar24 import Flightradar24StatusProvider
+        from .providers.flightradar24.status import Flightradar24StatusProvider
 
         res = await Flightradar24StatusProvider(
             hass, api_key=fr24_key, use_sandbox=use_sandbox, api_version=fr24_version
@@ -180,7 +180,7 @@ async def async_fetch_status(
     if av_key:
         if is_blocked(hass, "aviationstack"):
             return None
-        from .providers.status.aviationstack import AviationstackStatusProvider
+        from .providers.aviationstack.status import AviationstackStatusProvider
 
         res = await AviationstackStatusProvider(hass, av_key).async_get_status(flight)
         out = _unwrap_status(res)
@@ -193,7 +193,7 @@ async def async_fetch_status(
     if al_key:
         if is_blocked(hass, "airlabs"):
             return None
-        from .providers.status.airlabs import AirLabsStatusProvider
+        from .providers.airlabs.status import AirLabsStatusProvider
 
         res = await AirLabsStatusProvider(hass, al_key).async_get_status(flight)
         out = _unwrap_status(res)
@@ -207,7 +207,7 @@ async def async_fetch_status(
     if fa_key:
         if is_blocked(hass, "flightapi"):
             return None
-        from .providers.status.flightapi import FlightAPIStatusProvider
+        from .providers.flightapi.status import FlightAPIStatusProvider
 
         res = await FlightAPIStatusProvider(hass, fa_key).async_get_status(flight)
         out = _unwrap_status(res)
@@ -242,7 +242,7 @@ async def async_fetch_position(
     if provider == "flightradar24" and fr24_active_key:
         if is_blocked(hass, "fr24"):
             return None
-        from .providers.status.flightradar24 import Flightradar24StatusProvider
+        from .providers.flightradar24.status import Flightradar24StatusProvider
 
         res = await Flightradar24StatusProvider(
             hass, api_key=fr24_active_key, use_sandbox=use_sandbox, api_version=fr24_version
@@ -258,7 +258,7 @@ async def async_fetch_position(
     if provider == "airlabs" and al_key:
         if is_blocked(hass, "airlabs"):
             return None
-        from .providers.status.airlabs import AirLabsStatusProvider
+        from .providers.airlabs.status import AirLabsStatusProvider
 
         res = await AirLabsStatusProvider(hass, al_key).async_get_status(flight)
         out = _unwrap_status(res)
@@ -270,7 +270,7 @@ async def async_fetch_position(
         return _extract_position(out, provider)
 
     if provider == "opensky" and (os_user or os_pass):
-        from .providers.status.opensky import OpenSkyEnrichmentProvider
+        from .providers.opensky.status import OpenSkyEnrichmentProvider
 
         res = await OpenSkyEnrichmentProvider(hass).async_get_status(flight)
         out = _unwrap_status(res)
@@ -279,7 +279,7 @@ async def async_fetch_position(
     if provider == "aviationstack" and av_key:
         if is_blocked(hass, "aviationstack"):
             return None
-        from .providers.status.aviationstack import AviationstackStatusProvider
+        from .providers.aviationstack.status import AviationstackStatusProvider
 
         res = await AviationstackStatusProvider(hass, av_key).async_get_status(flight)
         out = _unwrap_status(res)

@@ -17,7 +17,7 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant
 
-from ...fr24_client import FR24Client, FR24Error, FR24RateLimitError
+from .client import FR24Client, FR24Error, FR24RateLimitError
 
 
 def _parse_dt(s: str | None) -> datetime | None:

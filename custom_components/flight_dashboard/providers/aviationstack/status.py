@@ -7,7 +7,7 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .base import FlightStatus
+from .._shared.status_base import FlightStatus
 
 
 def _error_type(code: str, message: str) -> str:

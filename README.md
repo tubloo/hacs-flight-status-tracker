@@ -173,6 +173,29 @@ of scheduled departure**. After that, refresh intervals tighten as departure
 approaches and while in‑flight, and stop several hours after arrival.
 You can add flights with minimal inputs (airline code, flight number, date) and let the integration enrich the details using provider APIs.
 
+## End‑to‑End Flow (Simple)
+
+1. **Add a flight** in the UI (airline + flight number + date; optional dep/arr airports, notes).
+   You only need minimal input; everything else can be enriched later.
+2. **Preview** fetches scheduled times and airports from the schedule provider.
+   This is a “read‑only” lookup to validate the flight before saving.
+3. **Confirm** saves the flight to local storage (manual flights list).
+   Manual flights are editable; provider‑sourced flights are read‑only.
+4. **Directory enrichment** fills airport/airline names, cities, and timezones from cache or built‑in dataset.
+   If a lookup is missing or stale, it refreshes and updates the cache.
+5. **Status refresh** runs on a schedule (no polling until close to departure, then more frequent).
+   Roughly: >6h out → every 6h, 2–6h → every 30m, <2h → every 10m, within 1h/in‑flight → every 15m, stop ~1h after arrival.
+6. **Status mapping** normalizes provider data into consistent fields (Scheduled / En Route / Arrived / Cancelled).
+   Raw provider state is preserved as `status.provider_state`.
+   If there’s no provider update within 15 minutes after the latest arrival time, the flight is marked **Arrived** with a warning.
+   Estimates come from the status provider; we do not issue a secondary schedule lookup during status refresh.
+7. **Delay/Duration** is computed from scheduled vs estimated/actual times.
+   Arrival times are preferred when available; otherwise departure times are used.
+8. **Auto‑remove** (optional) deletes old Arrived/Cancelled manual flights after your configured cutoff.
+   Minimum auto‑remove threshold is 1 hour to avoid premature cleanup. This means an assumed arrival can still be auto‑removed after 1 hour.
+   
+Timezone handling: provider times are normalized to UTC; if a timestamp is missing a timezone, it is interpreted in the airport’s timezone (from the directory cache).
+
 ## Features
 - Add flights with minimal inputs.
 - Preview and confirm before saving.
@@ -1283,7 +1306,7 @@ Remove a manual flight by flight_key.
 Clear all manual flights.
 
 ### `flight_dashboard.refresh_now`
-Force a refresh of upcoming flights and status updates.
+Immediately refresh upcoming flights and fetch live status for all active flights (bypasses the normal polling window).
 
 ### `flight_dashboard.prune_landed`
 Remove past flights (arrival time older than cutoff). Optional `hours` delay after arrival.

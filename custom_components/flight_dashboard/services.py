@@ -31,6 +31,7 @@ from .const import (
     SIGNAL_MANUAL_FLIGHTS_UPDATED,
 )
 from .manual_store import async_add_manual_flight, async_remove_manual_flight, async_clear_manual_flights
+from .status_manager import clear_status_cache
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -109,7 +110,18 @@ async def async_register_services(hass: HomeAssistant, _options_provider: Any | 
 
     async def _refresh(call: ServiceCall) -> None:
         _ = REFRESH_SCHEMA(dict(call.data))
-        async_dispatcher_send(hass, SIGNAL_MANUAL_FLIGHTS_UPDATED)
+        clear_status_cache(hass)
+        hass.data.setdefault(DOMAIN, {})["force_status_refresh"] = True
+        sensors = hass.data.get(DOMAIN, {}).get("upcoming_sensors") or {}
+        if isinstance(sensors, dict) and sensors:
+            # Force an immediate rebuild + status refresh
+            for sensor in list(sensors.values()):
+                try:
+                    await sensor._rebuild()  # type: ignore[attr-defined]
+                except Exception as e:
+                    _LOGGER.debug("Immediate refresh failed: %s", e)
+        else:
+            async_dispatcher_send(hass, SIGNAL_MANUAL_FLIGHTS_UPDATED)
         _LOGGER.info("Refresh triggered")
 
     async def _prune(call: ServiceCall) -> None:

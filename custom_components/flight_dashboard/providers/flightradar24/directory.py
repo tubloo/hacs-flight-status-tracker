@@ -5,7 +5,7 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant
 
-from ...fr24_client import FR24Client, FR24Error, FR24RateLimitError
+from .client import FR24Client, FR24Error, FR24RateLimitError
 from ...rate_limit import set_block
 
 

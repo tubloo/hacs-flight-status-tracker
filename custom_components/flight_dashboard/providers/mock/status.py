@@ -6,7 +6,7 @@ from typing import Any
 
 from importlib import resources
 
-from .base import FlightStatus
+from .._shared.status_base import FlightStatus
 
 
 def _load_fixtures() -> dict[str, Any]:

@@ -9,8 +9,8 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import config_validation as cv, selector
 
 # TripIt imports can remain even if you don't use them right now
-from .tripit_client import test_connection
-from .tripit_oauth import (
+from .providers.tripit.client import test_connection
+from .providers.tripit.oauth import (
     TripItRequestToken,
     exchange_for_access_token,
     get_request_token,
@@ -68,10 +68,10 @@ DEFAULT_MERGE_TOLERANCE_HOURS = 6
 DEFAULT_AUTO_PRUNE_LANDED = True
 DEFAULT_PRUNE_LANDED_HOURS = 1
 DEFAULT_CACHE_DIRECTORY = True
-DEFAULT_CACHE_TTL_DAYS = 90
-DEFAULT_DIRECTORY_AIRPORTS_URL = "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat"
+DEFAULT_CACHE_TTL_DAYS = 30
+DEFAULT_DIRECTORY_AIRPORTS_URL = "https://github.com/mborsetti/airportsdata/raw/main/airportsdata/airports.csv"
 DEFAULT_DIRECTORY_AIRLINES_URL = "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airlines.dat"
-DEFAULT_DIRECTORY_SOURCE = "custom"
+DEFAULT_DIRECTORY_SOURCE = "airportsdata"
 
 DEFAULT_STATUS_PROVIDER = "flightapi"
 DEFAULT_POSITION_PROVIDER = "flightradar24"
@@ -116,10 +116,9 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
             options[CONF_MAX_FLIGHTS] = user_input[CONF_MAX_FLIGHTS]
             options[CONF_MERGE_TOLERANCE_HOURS] = user_input[CONF_MERGE_TOLERANCE_HOURS]
             options[CONF_AUTO_PRUNE_LANDED] = bool(user_input.get(CONF_AUTO_PRUNE_LANDED, False))
-            options[CONF_PRUNE_LANDED_HOURS] = int(user_input.get(CONF_PRUNE_LANDED_HOURS, 0))
+            options[CONF_PRUNE_LANDED_HOURS] = max(1, int(user_input.get(CONF_PRUNE_LANDED_HOURS, 1)))
             options[CONF_CACHE_DIRECTORY] = bool(user_input.get(CONF_CACHE_DIRECTORY, DEFAULT_CACHE_DIRECTORY))
             options[CONF_CACHE_TTL_DAYS] = int(user_input.get(CONF_CACHE_TTL_DAYS, DEFAULT_CACHE_TTL_DAYS))
-            options[CONF_DIRECTORY_AIRPORTS_URL] = user_input.get(CONF_DIRECTORY_AIRPORTS_URL, "").strip()
             options[CONF_DIRECTORY_AIRLINES_URL] = user_input.get(CONF_DIRECTORY_AIRLINES_URL, "").strip()
             options[CONF_DIRECTORY_SOURCE] = user_input.get(CONF_DIRECTORY_SOURCE, DEFAULT_DIRECTORY_SOURCE)
 
@@ -158,10 +157,9 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
         max_flights = options.get(CONF_MAX_FLIGHTS, DEFAULT_MAX_FLIGHTS)
         tolerance = options.get(CONF_MERGE_TOLERANCE_HOURS, DEFAULT_MERGE_TOLERANCE_HOURS)
         auto_prune = options.get(CONF_AUTO_PRUNE_LANDED, DEFAULT_AUTO_PRUNE_LANDED)
-        prune_hours = options.get(CONF_PRUNE_LANDED_HOURS, DEFAULT_PRUNE_LANDED_HOURS)
+        prune_hours = max(1, int(options.get(CONF_PRUNE_LANDED_HOURS, DEFAULT_PRUNE_LANDED_HOURS)))
         cache_dir = options.get(CONF_CACHE_DIRECTORY, DEFAULT_CACHE_DIRECTORY)
         cache_ttl_days = options.get(CONF_CACHE_TTL_DAYS, DEFAULT_CACHE_TTL_DAYS)
-        directory_airports_url = options.get(CONF_DIRECTORY_AIRPORTS_URL, DEFAULT_DIRECTORY_AIRPORTS_URL)
         directory_airlines_url = options.get(CONF_DIRECTORY_AIRLINES_URL, DEFAULT_DIRECTORY_AIRLINES_URL)
         directory_source = options.get(CONF_DIRECTORY_SOURCE, DEFAULT_DIRECTORY_SOURCE)
 
@@ -249,6 +247,9 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
         number_hours_0_168 = selector.NumberSelector(
             selector.NumberSelectorConfig(min=0, max=168, step=1, mode=selector.NumberSelectorMode.SLIDER, unit_of_measurement="h")
         )
+        number_hours_1_168 = selector.NumberSelector(
+            selector.NumberSelectorConfig(min=1, max=168, step=1, mode=selector.NumberSelectorMode.SLIDER, unit_of_measurement="h")
+        )
         number_hours_0_48 = selector.NumberSelector(
             selector.NumberSelectorConfig(min=0, max=48, step=1, mode=selector.NumberSelectorMode.SLIDER, unit_of_measurement="h")
         )
@@ -269,8 +270,8 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
                     selector.SelectOptionDict(value="aviationstack", label="Aviationstack"),
                     selector.SelectOptionDict(value="airlabs", label="AirLabs"),
                     selector.SelectOptionDict(value="fr24", label="Flightradar24"),
+                    selector.SelectOptionDict(value="airportsdata", label="Airportsdata (CSV)"),
                     selector.SelectOptionDict(value="openflights", label="OpenFlights (airports.dat)"),
-                    selector.SelectOptionDict(value="custom", label="Custom airports.dat/airlines.dat URL"),
                 ],
                 multiple=False,
                 mode=selector.SelectSelectorMode.DROPDOWN,
@@ -321,7 +322,6 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional(CONF_CACHE_DIRECTORY, default=cache_dir): bool,
                 vol.Optional(CONF_CACHE_TTL_DAYS, default=cache_ttl_days): number_days_ttl,
                 vol.Optional(CONF_DIRECTORY_SOURCE, default=directory_source): directory_selector,
-                vol.Optional(CONF_DIRECTORY_AIRPORTS_URL, default=directory_airports_url): str,
                 vol.Optional(CONF_DIRECTORY_AIRLINES_URL, default=directory_airlines_url): str,
             }
         )
@@ -330,7 +330,7 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
         schema_dict.update(
             {
                 vol.Optional(CONF_AUTO_PRUNE_LANDED, default=auto_prune): bool,
-                vol.Optional(CONF_PRUNE_LANDED_HOURS, default=prune_hours): number_hours_0_168,
+                vol.Optional(CONF_PRUNE_LANDED_HOURS, default=prune_hours): number_hours_1_168,
             }
         )
 

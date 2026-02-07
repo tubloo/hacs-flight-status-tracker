@@ -37,7 +37,7 @@
           "cache_directory": "Cache airports/airlines",
           "cache_ttl_days": "Directory cache TTL (days)",
           "directory_source": "Directory source (airport/airline)",
-          "directory_airports_url": "Directory airports URL (airports.dat)",
+          "directory_airports_url": "Directory airports URL (CSV or airports.dat)",
           "directory_airlines_url": "Directory airlines URL (airlines.dat)",
           "status_provider": "Status provider",
           "schedule_provider": "Schedule provider",

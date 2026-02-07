@@ -6,6 +6,7 @@ Endpoint used: GET /airline/{apiKey}?num=XX&date=YYYYMMDD&name=YY
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 from typing import Any
 import asyncio
 import logging
@@ -15,7 +16,7 @@ import aiohttp
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .base import FlightStatus
+from .._shared.status_base import FlightStatus
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -93,6 +94,23 @@ def _parse_human_time(s: str | None, base_date: date | None, tz_hint) -> str | N
         except Exception:
             continue
     return None
+
+
+def _local_date_from_sched(sched: str | None, tzname: str | None) -> date | None:
+    if not sched:
+        return None
+    try:
+        dt = datetime.fromisoformat(sched.replace("Z", "+00:00"))
+    except Exception:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    if tzname:
+        try:
+            dt = dt.astimezone(ZoneInfo(tzname))
+        except Exception:
+            pass
+    return dt.date()
 
 
 def _parse_human_time_naive(s: str | None, base_date: date | None) -> str | None:
@@ -202,16 +220,30 @@ class FlightAPIStatusProvider:
         if not airline or not number:
             return None
 
+        # Prefer departure local date (airport tz) to avoid UTC-date mismatches
+        dep = flight.get("dep") or {}
+        dep_air = dep.get("airport") or {}
+        dep_tz = dep_air.get("tz")
+        sched_local = dep.get("scheduled_local")
         # Prefer scheduled_departure if provided, else dep.scheduled
-        sched = flight.get("scheduled_departure") or (flight.get("dep") or {}).get("scheduled")
-        yyyymmdd = _date_to_yyyymmdd(sched)
+        sched = flight.get("scheduled_departure") or dep.get("scheduled")
+        yyyymmdd = _date_to_yyyymmdd(sched_local)
+        if not yyyymmdd and sched:
+            d_local = _local_date_from_sched(sched, dep_tz)
+            if d_local:
+                yyyymmdd = d_local.strftime("%Y%m%d")
+        if not yyyymmdd:
+            yyyymmdd = _date_to_yyyymmdd(sched)
         if not yyyymmdd:
             return None
         base_date_from_input = None
         try:
-            base_date_from_input = datetime.fromisoformat(sched[:10]).date() if sched else None
+            base_date_from_input = datetime.strptime(yyyymmdd, "%Y%m%d").date()
         except Exception:
-            base_date_from_input = None
+            try:
+                base_date_from_input = datetime.fromisoformat(sched[:10]).date() if sched else None
+            except Exception:
+                base_date_from_input = None
 
         url = f"https://api.flightapi.io/airline/{self.api_key}"
         params = {"num": number, "date": yyyymmdd, "name": airline}
