@@ -6,7 +6,6 @@
   "issue_tracker": "https://github.com/tubloo/hacs-flight-status-tracker/issues",
   "codeowners": ["@tubloo"],
   "requirements": ["requests", "requests-oauthlib"],
-  "icon": "mdi:airplane",
   "config_flow": true,
   "iot_class": "cloud_polling"
 }
