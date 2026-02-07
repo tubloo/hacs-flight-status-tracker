@@ -15,8 +15,3 @@ secrets.yaml
 *.key
 *.pem
 *.crt
-.github/workflows/hacs.yml
-.github/workflows/hassfest.yml
-hacs.json
-HACS_READY.md
-assets/brands/flight_dashboard/
