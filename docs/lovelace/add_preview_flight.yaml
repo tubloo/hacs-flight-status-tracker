@@ -1,0 +1,141 @@
+type: vertical-stack
+cards:
+  - type: custom:mushroom-title-card
+    title: Add A Flight
+    subtitle: Enter airline + number + date, preview, then confirm
+
+  - type: vertical-stack
+    cards:
+      - type: horizontal-stack
+        cards:
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: text.flight_status_tracker_add_flight_airline
+                name: Airline code (e.g. AF)
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: text.flight_status_tracker_add_flight_number
+                name: Flight number (e.g. 2)
+
+      - type: horizontal-stack
+        cards:
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: date.flight_status_tracker_add_flight_date
+                name: Date
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: text.flight_status_tracker_add_flight_dep_airport
+                name: Departure airport (optional, e.g. CDG)
+
+      - type: horizontal-stack
+        cards:
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: text.flight_status_tracker_add_flight_travellers
+                name: Travellers (optional)
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: text.flight_status_tracker_add_flight_notes
+                name: Notes (optional)
+
+  - type: custom:tailwindcss-template-card
+    content: >
+      {% set p = state_attr('sensor.flight_status_tracker_add_preview','preview') or {} %}
+      {% set ready = p.get('ready') %}
+      {% set error = p.get('error') %}
+      {% set hint = p.get('hint') %}
+      {% set f = p.get('flight') %}
+
+      {% if not f %}
+        <div class='rounded-2xl bg-[rgba(255,255,255,0.04)] p-4'>
+          <div class='text-sm opacity-80'>Enter airline + number + date, then press Search.</div>
+        </div>
+      {% else %}
+        {% set dep = f.get('dep') or {} %}
+        {% set arr = f.get('arr') or {} %}
+        {% set dep_air = dep.get('airport') or {} %}
+        {% set arr_air = arr.get('airport') or {} %}
+
+      {% set dep_code = (dep_air.get('iata') or '-') | upper %}
+      {% set arr_code = (arr_air.get('iata') or '-') | upper %}
+
+        {% set dep_label = (dep_air.get('city') or dep_air.get('name') or dep_code) | title %}
+        {% set arr_label = (arr_air.get('city') or arr_air.get('name') or arr_code) | title %}
+
+        {% set dep_dt = dep.get('scheduled_local') and as_datetime(dep.get('scheduled_local')) %}
+        {% set arr_dt = arr.get('scheduled_local') and as_datetime(arr.get('scheduled_local')) %}
+      {% set dep_date = dep_dt and dep_dt.strftime('%d %b (%a)') or '-' %}
+      {% set dep_time = dep_dt and dep_dt.strftime('%H:%M') or '-' %}
+      {% set arr_time = arr_dt and arr_dt.strftime('%H:%M') or '-' %}
+
+        {% set dep_tz = dep_air.get('tz_short') or '' %}
+        {% set arr_tz = arr_air.get('tz_short') or '' %}
+
+        {% set airline_logo = f.get('airline_logo_url') or ("https://pics.avs.io/64/64/" ~ (f.get('airline_code','') | upper) ~ ".png") %}
+
+        <div class='rounded-2xl bg-[rgba(255,255,255,0.04)] p-4 space-y-3'>
+          <div class='flex items-center gap-3'>
+            <img src='{{ airline_logo }}' class='h-12 w-12 object-contain rounded bg-white/90 p-1 ring-1 ring-white/30' />
+            <div class='flex-1 min-w-0'>
+              <div class='text-lg truncate'>{{ f.get('airline_code','-') }} {{ f.get('flight_number','-') }} - {{ dep_date }}</div>
+              <div class='text-sm opacity-80 truncate'>{{ dep_label }} ({{ dep_code }}) &rarr; {{ arr_label }} ({{ arr_code }})</div>
+            </div>
+            <span class='text-xs px-2 py-1 rounded-full {{ "bg-emerald-800 text-white" if ready else "bg-red-800 text-white" }}'>
+              {{ "Ready" if ready else "Not Ready" }}
+            </span>
+          </div>
+
+          <div class='grid grid-cols-2 gap-x-4 gap-y-1 text-sm'>
+            <div class='opacity-70'>Scheduled departure</div><div class='opacity-70'>Scheduled arrival</div>
+            <div class='text-2xl font-semibold text-gray-300'>{{ dep_time }} <span class='text-xs opacity-70 ml-1'>{{ dep_tz }}</span></div>
+            <div class='text-2xl font-semibold text-gray-300'>{{ arr_time }} <span class='text-xs opacity-70 ml-1'>{{ arr_tz }}</span></div>
+          </div>
+
+          {% if error or hint %}
+          <div class='text-sm'>
+            {% if error %}
+              <div class='text-red-300'>{{ error }}</div>
+            {% elif hint %}
+              <div class='text-gray-300'>{{ hint }}</div>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+      {% endif %}
+
+  - type: horizontal-stack
+    cards:
+      - type: custom:mushroom-entity-card
+        entity: button.flight_status_tracker_preview_from_inputs
+        name: Search
+        icon: mdi:magnify
+        tap_action:
+          action: call-service
+          service: button.press
+          target:
+            entity_id: button.flight_status_tracker_preview_from_inputs
+      - type: custom:mushroom-entity-card
+        entity: button.flight_status_tracker_confirm_add_preview
+        name: Add Flight
+        icon: mdi:content-save
+        tap_action:
+          action: call-service
+          service: button.press
+          target:
+            entity_id: button.flight_status_tracker_confirm_add_preview
+      - type: custom:mushroom-entity-card
+        entity: button.flight_status_tracker_clear_preview
+        name: Clear
+        icon: mdi:close-circle
+        tap_action:
+          action: call-service
+          service: button.press
+          target:
+            entity_id: button.flight_status_tracker_clear_preview

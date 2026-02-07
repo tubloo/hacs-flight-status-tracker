@@ -150,7 +150,8 @@ async def lookup_schedule(
     al_key = (options.get(CONF_AIRLABS_KEY) or "").strip()
     fa_key = (options.get(CONF_FLIGHTAPI_KEY) or "").strip()
 
-    schedule_pref = (options.get(CONF_SCHEDULE_PROVIDER) or "auto").lower()
+    # Match Options Flow defaults when options are missing.
+    schedule_pref = (options.get(CONF_SCHEDULE_PROVIDER) or "flightapi").lower()
     if schedule_pref == "aviationstack" and not av_key:
         return {"error": "no_provider", "hint": "Aviationstack API key is required for schedule lookup."}
     if schedule_pref == "airlabs" and not al_key:

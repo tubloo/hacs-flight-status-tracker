@@ -279,7 +279,7 @@ async def async_update_statuses(
             }
         if isinstance(status, dict):
             status_provider = (status.get("provider") or "").lower()
-            configured_provider = (options.get("status_provider") or "flightradar24").lower()
+            configured_provider = (options.get("status_provider") or "flightapi").lower()
             if status_provider and status_provider != configured_provider:
                 cache.pop(key, None)
                 continue
@@ -358,10 +358,12 @@ async def async_update_statuses(
             arr["airport"] = arr_air
             f["dep"] = dep
             f["arr"] = arr
-        status_provider = (options.get("status_provider") or "flightradar24").lower()
-        position_provider = (options.get(CONF_POSITION_PROVIDER) or "same_as_status").lower()
+        status_provider = (options.get("status_provider") or "flightapi").lower()
+        position_provider = (options.get(CONF_POSITION_PROVIDER) or "none").lower()
         if position_provider in ("same_as_status", "same", "status"):
             position_provider = status_provider
+        if position_provider in ("none", "disabled", "off"):
+            position_provider = ""
 
         status = await async_fetch_status(hass, options, f)
         position = None

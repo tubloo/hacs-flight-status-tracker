@@ -1,0 +1,31 @@
+type: vertical-stack
+cards:
+  - type: entities
+    title: Flight Status Tracker Diagnostics
+    show_header_toggle: false
+    entities:
+      - entity: sensor.flight_status_tracker_upcoming_flights
+        name: Upcoming flights (summary)
+      - entity: sensor.flight_status_tracker_fr24_usage
+        name: FR24 usage (credits in last period)
+      - entity: sensor.flight_status_tracker_provider_blocks
+        name: Provider blocks
+      - entity: button.flight_status_tracker_refresh_now
+        name: Refresh now
+      - entity: button.flight_status_tracker_remove_landed
+        name: Remove landed flights
+
+  - type: markdown
+    title: Provider Blocks Detail
+    content: >
+      {% set providers = state_attr('sensor.flight_status_tracker_provider_blocks','providers') or {} %}
+      {% if providers %}
+      {% for name, info in providers.items() %}
+      {% set until_dt = info.until and as_datetime(info.until) %}
+      - **{{ name }}** blocked until
+        {{ until_dt and (as_timestamp(until_dt) | timestamp_custom('%d %b %H:%M', true)) or info.until }}
+        ({{ info.seconds_remaining }}s) - {{ info.reason }}
+      {% endfor %}
+      {% else %}
+      No providers blocked.
+      {% endif %}

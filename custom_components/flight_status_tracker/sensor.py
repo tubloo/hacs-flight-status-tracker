@@ -154,11 +154,14 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
 
         now = dt_util.utcnow()
         options = dict(self.entry.options)
-        include_past = int(options.get("include_past_hours", 6))
-        days_ahead = int(options.get("days_ahead", 30))
+        include_past = int(options.get("include_past_hours", 24))
+        days_ahead = int(options.get("days_ahead", 120))
         max_flights = int(options.get("max_flights", 50))
-        auto_prune = bool(options.get("auto_prune_landed", False))
-        prune_hours_raw = int(options.get("prune_landed_hours", 0))
+        # Defaults should match the Options Flow defaults. If the user has never
+        # opened Options, `entry.options` can be empty, so we must still behave
+        # sensibly.
+        auto_prune = bool(options.get("auto_prune_landed", True))
+        prune_hours_raw = int(options.get("prune_landed_hours", 1))
         prune_hours = max(1, prune_hours_raw) if auto_prune else prune_hours_raw
 
         start = now - timedelta(hours=include_past)

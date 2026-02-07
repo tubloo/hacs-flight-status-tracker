@@ -13,7 +13,6 @@ from homeassistant.util import dt as dt_util
 from .const import DOMAIN, EVENT_UPDATED
 from .services import SERVICE_CLEAR, SERVICE_REMOVE
 from .const import SERVICE_CLEAR_PREVIEW, SERVICE_PREVIEW_FLIGHT, SERVICE_REFRESH_NOW, SERVICE_PRUNE_LANDED
-from .legacy_migration import async_import_legacy_manual_flights
 from .preview_store import async_get_preview, async_set_preview
 from .manual_store import async_add_manual_flight_record
 from .ui_inputs_store import (
@@ -63,12 +62,12 @@ def _get_include_past_hours(hass: HomeAssistant) -> int:
     # Read current options from the first config entry
     entries = hass.config_entries.async_entries(DOMAIN)
     if not entries:
-        return 6
+        return 24
     opts = dict(entries[0].options or {})
     try:
-        return int(opts.get("include_past_hours", 6))
+        return int(opts.get("include_past_hours", 24))
     except Exception:
-        return 6
+        return 24
 
 
 class FlightDashboardRemoveSelectedFlightButton(ButtonEntity):
@@ -286,26 +285,6 @@ class FlightStatusTrackerClearPreviewButton(ButtonEntity):
         await self.hass.services.async_call(DOMAIN, SERVICE_CLEAR_PREVIEW, {}, blocking=True)
 
 
-class FlightStatusTrackerImportLegacyFlightsButton(ButtonEntity):
-    _attr_name = "Flight Status Tracker Import Legacy Flights (flight_dashboard)"
-    _attr_unique_id = "flight_status_tracker_import_legacy_flights"
-    _attr_icon = "mdi:database-import-outline"
-    _attr_suggested_object_id = "flight_status_tracker_import_legacy_flights"
-
-    def __init__(self, hass: HomeAssistant) -> None:
-        self.hass = hass
-
-    async def async_press(self) -> None:
-        res = await async_import_legacy_manual_flights(self.hass)
-        imported = res.get("imported", 0)
-        skipped = res.get("skipped", 0)
-        await _notify(
-            self.hass,
-            "Flight Status Tracker",
-            f"Legacy import complete. Imported={imported}, skipped={skipped}.",
-        )
-
-
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities) -> None:
     async_add_entities(
         [
@@ -317,6 +296,5 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
             FlightDashboardClearAddPreviewButton(hass),
             FlightStatusTrackerPreviewFromInputsButton(hass),
             FlightStatusTrackerClearPreviewButton(hass),
-            FlightStatusTrackerImportLegacyFlightsButton(hass),
         ]
     )

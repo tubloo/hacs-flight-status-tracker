@@ -52,7 +52,8 @@ def _get_option(options: dict[str, Any], key: str, default: Any) -> Any:
 
 
 def _directory_source(options: dict[str, Any]) -> str:
-    src = str(options.get("directory_source", "auto") or "auto").strip().lower()
+    # Match Options Flow defaults when options are missing.
+    src = str(options.get("directory_source", "airportsdata") or "airportsdata").strip().lower()
     return src
 
 
@@ -108,7 +109,7 @@ async def get_airport(hass: HomeAssistant, options: dict[str, Any], iata: str) -
 
     directory_source = _directory_source(options)
     cache_enabled = bool(_get_option(options, "cache_directory", True))
-    ttl_days = int(_get_option(options, "cache_ttl_days", 90))
+    ttl_days = int(_get_option(options, "cache_ttl_days", 30))
     if directory_source == "airportsdata":
         ttl_days = 30
     airports_url = OPENFLIGHTS_AIRPORTS_URL if directory_source in ("openflights", "custom") else AIRPORTSDATA_AIRPORTS_URL
@@ -181,7 +182,7 @@ async def get_airline(hass: HomeAssistant, options: dict[str, Any], iata: str) -
         return None
 
     cache_enabled = bool(_get_option(options, "cache_directory", True))
-    ttl_days = int(_get_option(options, "cache_ttl_days", 90))
+    ttl_days = int(_get_option(options, "cache_ttl_days", 30))
     source = _directory_source(options)
     airlines_url = str(_get_option(options, "directory_airlines_url", "")).strip() or OPENFLIGHTS_AIRLINES_URL
 

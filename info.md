@@ -1,4 +1,4 @@
-# Flight Dashboard
+# Flight Status Tracker
 
 Track upcoming flights in Home Assistant with minimal input.
 

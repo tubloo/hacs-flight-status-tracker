@@ -58,7 +58,7 @@ async def async_fetch_status(
     provider_override: str | None = None,
 ) -> dict[str, Any] | None:
     """Fetch provider status for a flight, honoring configured provider preference."""
-    provider = (provider_override or options.get("status_provider") or "flightradar24").lower()
+    provider = (provider_override or options.get("status_provider") or "flightapi").lower()
     use_sandbox = bool(options.get("fr24_use_sandbox", False))
     fr24_key = (options.get("fr24_api_key") or "").strip()
     fr24_sandbox_key = (options.get("fr24_sandbox_key") or "").strip()

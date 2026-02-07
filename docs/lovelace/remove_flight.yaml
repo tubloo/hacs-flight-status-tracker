@@ -1,0 +1,12 @@
+type: entities
+title: Remove A Flight
+show_header_toggle: false
+entities:
+  - entity: select.flight_status_tracker_remove_flight
+    name: Select flight to remove
+  - entity: button.flight_status_tracker_remove_selected_flight
+    name: Remove selected flight
+    icon: mdi:delete
+  - entity: button.flight_status_tracker_remove_landed
+    name: Remove landed flights
+    icon: mdi:trash-can-outline
