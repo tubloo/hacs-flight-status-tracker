@@ -16,7 +16,7 @@ from .providers.tripit.oauth import (
     get_request_token,
 )
 
-DOMAIN = "flight_dashboard"
+DOMAIN = "flight_status_tracker"
 
 # Itinerary options
 CONF_ITINERARY_PROVIDERS = "itinerary_providers"

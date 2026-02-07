@@ -2,10 +2,10 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SRC="$REPO_ROOT/custom_components/flight_dashboard"
-DEST="/Users/sumitghosh/dev/ha-flight-dashboard/config/custom_components/flight_dashboard"
-PKG_SRC="$REPO_ROOT/packages/flight_dashboard_add_flow.yaml"
-PKG_DEST="/Users/sumitghosh/dev/ha-flight-dashboard/config/packages/flight_dashboard_add_flow.yaml"
+SRC="$REPO_ROOT/custom_components/flight_status_tracker"
+DEST="/Users/sumitghosh/dev/ha-flight-dashboard/config/custom_components/flight_status_tracker"
+PKG_SRC="$REPO_ROOT/packages/flight_status_tracker_add_flow.yaml"
+PKG_DEST="/Users/sumitghosh/dev/ha-flight-dashboard/config/packages/flight_status_tracker_add_flow.yaml"
 
 if [ ! -d "$SRC" ]; then
   echo "Source not found: $SRC" >&2

@@ -14,7 +14,7 @@ from .selected import get_selected_flight, get_flight_position
 
 class FlightDashboardSelectedHasPositionBinarySensor(BinarySensorEntity):
     _attr_name = "Flight Dashboard Selected Has Position"
-    _attr_unique_id = "flight_dashboard_selected_has_position"
+    _attr_unique_id = "flight_status_tracker_selected_has_position"
     _attr_icon = "mdi:map-marker-radius"
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -32,7 +32,7 @@ class FlightDashboardSelectedHasPositionBinarySensor(BinarySensorEntity):
 
         self._unsub_state = async_track_state_change_event(
             self.hass,
-            ["sensor.flight_dashboard_upcoming_flights", "select.flight_dashboard_selected_flight"],
+            ["sensor.flight_status_tracker_upcoming_flights", "select.flight_status_tracker_selected_flight"],
             _kick,
         )
         self._unsub_bus = self.hass.bus.async_listen(EVENT_UPDATED, _kick)

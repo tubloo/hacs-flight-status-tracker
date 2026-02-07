@@ -5,7 +5,7 @@ can import the names they expect without crashing HA at import time.
 """
 from __future__ import annotations
 
-DOMAIN = "flight_dashboard"
+DOMAIN = "flight_status_tracker"
 STORAGE_KEY_DIRECTORY = f"{DOMAIN}.directory_cache"
 
 # Keep platforms minimal while we stabilize.
@@ -16,13 +16,13 @@ PLATFORMS: list[str] = ["sensor", "binary_sensor", "select", "button"]
 SCHEMA_VERSION = 3
 
 # --- Dispatcher signals (used internally to notify updates) ---
-SIGNAL_MANUAL_FLIGHTS_UPDATED = "flight_dashboard_manual_flights_updated"
-SIGNAL_PREVIEW_UPDATED = "flight_dashboard_preview_updated"
-SIGNAL_OPTIONS_UPDATED = "flight_dashboard_options_updated"
+SIGNAL_MANUAL_FLIGHTS_UPDATED = "flight_status_tracker_manual_flights_updated"
+SIGNAL_PREVIEW_UPDATED = "flight_status_tracker_preview_updated"
+SIGNAL_OPTIONS_UPDATED = "flight_status_tracker_options_updated"
 
 # --- Events (optional; safe if unused) ---
-EVENT_UPDATED = "flight_dashboard_updated"
-EVENT_PREVIEW_UPDATED = "flight_dashboard_preview_updated"
+EVENT_UPDATED = "flight_status_tracker_updated"
+EVENT_PREVIEW_UPDATED = "flight_status_tracker_preview_updated"
 
 # --- Service names: manual flights ---
 SERVICE_ADD_MANUAL_FLIGHT = "add_manual_flight"

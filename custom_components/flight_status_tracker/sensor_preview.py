@@ -1,4 +1,4 @@
-"""Preview sensor entity: sensor.flight_dashboard_add_preview"""
+"""Preview sensor entity: sensor.flight_status_tracker_add_preview"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -16,7 +16,7 @@ class FlightDashboardAddPreviewSensor(SensorEntity):
 
     _attr_name = "Flight Dashboard Add Preview"
     _attr_icon = "mdi:airplane-plus"
-    _attr_unique_id = "flight_dashboard_add_preview"
+    _attr_unique_id = "flight_status_tracker_add_preview"
 
     @property
     def native_value(self) -> str:

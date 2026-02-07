@@ -38,7 +38,7 @@ script:
             {{ travellers_raw.split(',') | map('trim') | select('string') | list }}
             {% endif %}
           notes: "{{ states('input_text.fd_notes') | trim }}"
-      - service: flight_dashboard.preview_flight
+      - service: flight_status_tracker.preview_flight
         data:
           airline: "{{ airline }}"
           flight_number: "{{ flight_number }}"
@@ -51,8 +51,8 @@ script:
     alias: "Flight Dashboard: Confirm add preview"
     mode: single
     sequence:
-      - service: flight_dashboard.confirm_add
-      - service: flight_dashboard.clear_preview
+      - service: flight_status_tracker.confirm_add
+      - service: flight_status_tracker.clear_preview
       - service: input_text.set_value
         data:
           entity_id:
@@ -65,17 +65,17 @@ script:
     alias: "Flight Dashboard: Clear preview"
     mode: single
     sequence:
-      - service: flight_dashboard.clear_preview
+      - service: flight_status_tracker.clear_preview
 
   fd_remove_selected_flight:
     alias: "Flight Dashboard: Remove selected flight"
     mode: single
     sequence:
       - variables:
-          key: "{{ states('select.flight_dashboard_remove_flight') }}"
+          key: "{{ states('select.flight_status_tracker_remove_flight') }}"
       - condition: template
         value_template: "{{ key not in ['unknown','unavailable','No flights',''] }}"
-      - service: flight_dashboard.remove_manual_flight
+      - service: flight_status_tracker.remove_manual_flight
         data:
           flight_key: "{{ key }}"
 

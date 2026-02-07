@@ -1,6 +1,6 @@
 {
-  "domain": "flight_dashboard",
-  "name": "Flight Dashboard",
+  "domain": "flight_status_tracker",
+  "name": "Flight Status Tracker",
   "version": "0.1.0",
   "documentation": "https://github.com/tubloo/hass-integration-flight-dashboard",
   "issue_tracker": "https://github.com/tubloo/hass-integration-flight-dashboard/issues",

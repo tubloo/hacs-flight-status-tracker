@@ -25,7 +25,7 @@ from .rate_limit import is_blocked, set_block
 from .status_resolver import _normalize_status_state
 
 # We read options from the integration options dict that you already store
-DOMAIN = "flight_dashboard"
+DOMAIN = "flight_status_tracker"
 
 # config_flow keys (string literals to avoid circular imports)
 CONF_STATUS_PROVIDER = "status_provider"
@@ -176,7 +176,7 @@ async def lookup_schedule(
             resources = None  # type: ignore
         if resources:
             def _load():
-                data = resources.files("custom_components.flight_dashboard.fixtures").joinpath("mock_flights.json").read_text()
+                data = resources.files("custom_components.flight_status_tracker.fixtures").joinpath("mock_flights.json").read_text()
                 return json.loads(data)
 
             fixtures = await hass.async_add_executor_job(_load)

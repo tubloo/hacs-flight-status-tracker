@@ -6,8 +6,8 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 
 
-UPCOMING_SENSOR = "sensor.flight_dashboard_upcoming_flights"
-SELECT_ENTITY_ID = "select.flight_dashboard_selected_flight"
+UPCOMING_SENSOR = "sensor.flight_status_tracker_upcoming_flights"
+SELECT_ENTITY_ID = "select.flight_status_tracker_selected_flight"
 
 
 def _extract_flight_key(option: str | None) -> str:

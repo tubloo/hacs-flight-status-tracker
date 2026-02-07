@@ -10,7 +10,7 @@ from .._shared.status_base import FlightStatus
 
 
 def _load_fixtures() -> dict[str, Any]:
-    data = resources.files("custom_components.flight_dashboard.fixtures").joinpath("mock_flights.json").read_text()
+    data = resources.files("custom_components.flight_status_tracker.fixtures").joinpath("mock_flights.json").read_text()
     return json.loads(data)
 
 

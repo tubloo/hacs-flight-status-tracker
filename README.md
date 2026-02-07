@@ -1,8 +1,8 @@
-# Flight Dashboard (Home Assistant)
+# Flight Status Tracker (Home Assistant)
 
 > This project was created with the assistance of OpenAI Codex.
 
-Flight Dashboard is a Home Assistant integration that tracks upcoming flights and their status.
+Flight Status Tracker is a Home Assistant integration that tracks upcoming flights and their status.
 It lets you add flights, preview them before saving, and view a clean, card-based list with live
 status, timing, and gate details.
 
@@ -11,7 +11,7 @@ status, timing, and gate details.
 
 ## Privacy & Data Handling
 
-Flight Dashboard is **per‑user and BYO‑API‑keys**. It does **not** operate any shared
+Flight Status Tracker is **per‑user and BYO‑API‑keys**. It does **not** operate any shared
 backend and does **not** transmit your travellers/notes to third parties. Flight
 status and schedule lookups are performed directly from your Home Assistant
 instance to the configured provider APIs using your own keys.
@@ -22,14 +22,14 @@ instance to the configured provider APIs using your own keys.
 **Option A — git clone (recommended)**
 ```
 cd /config/custom_components
-git clone https://github.com/tubloo/hass-integration-flight-dashboard flight_dashboard
+git clone https://github.com/tubloo/hass-integration-flight-dashboard flight_status_tracker
 ```
 Then restart Home Assistant.
 
 **Option B — download ZIP**
 1. Download the repo ZIP from GitHub.
 2. Extract it.
-3. Copy `custom_components/flight_dashboard` into `/config/custom_components/flight_dashboard`.
+3. Copy `custom_components/flight_status_tracker` into `/config/custom_components/flight_status_tracker`.
 4. Restart Home Assistant.
 
 Finally, add the integration in **Settings → Devices & Services**.
@@ -37,7 +37,7 @@ Finally, add the integration in **Settings → Devices & Services**.
 ### HACS (Custom Repository)
 1. HACS → **⋮** → **Custom repositories**
 2. Add this repo URL and select **Integration**
-3. Install **Flight Dashboard** and restart Home Assistant
+3. Install **Flight Status Tracker** and restart Home Assistant
 4. Add the integration in **Settings → Devices & Services**
 
 ## Setup Package (Helpers + Scripts)
@@ -53,7 +53,7 @@ homeassistant:
 
 2) Copy the package file from this repo to your HA config:
 ```
-/config/packages/flight_dashboard_add_flow.yaml
+/config/packages/flight_status_tracker_add_flow.yaml
 ```
 
 3) Restart Home Assistant.
@@ -91,7 +91,7 @@ If you prefer the UI instead of packages:
    - `script.fd_clear_preview`
 
 You can copy the script YAML directly from
-`/config/packages/flight_dashboard_add_flow.yaml` if you want exact parity.
+`/config/packages/flight_status_tracker_add_flow.yaml` if you want exact parity.
 
 ## Required / Recommended Frontend Components
 
@@ -107,7 +107,7 @@ If you don’t have these, install them via HACS → Frontend, then restart HA.
 ## Helpers & Scripts (Add Flight Flow)
 
 The Add Flight card expects these helpers/scripts to exist. Use the provided
-`/config/packages/flight_dashboard_add_flow.yaml` or create them in UI:
+`/config/packages/flight_status_tracker_add_flow.yaml` or create them in UI:
 
 - `input_text.fd_airline`
 - `input_text.fd_flight_number`
@@ -121,7 +121,7 @@ The Add Flight card expects these helpers/scripts to exist. Use the provided
 ## Post‑Install Checklist
 
 1) **Configure the integration**  
-   Settings → Devices & Services → Add Integration → Flight Dashboard  
+   Settings → Devices & Services → Add Integration → Flight Status Tracker  
    Add API keys, choose providers, set cache/refresh options.
 
 2) **Install required frontend cards** (via HACS → Frontend)  
@@ -140,21 +140,21 @@ The Add Flight card expects these helpers/scripts to exist. Use the provided
 Use this if you want to fully remove the integration and its data.
 
 1) **Remove the integration**
-   - Settings → Devices & Services → Flight Dashboard → Remove
+   - Settings → Devices & Services → Flight Status Tracker → Remove
 
 2) **Remove the custom component files**
-   - Delete `/config/custom_components/flight_dashboard/`
+   - Delete `/config/custom_components/flight_status_tracker/`
 
 3) **Remove helpers & scripts (if you used the package)**
-   - Delete `/config/packages/flight_dashboard_add_flow.yaml`
+   - Delete `/config/packages/flight_status_tracker_add_flow.yaml`
    - Restart Home Assistant
    - Or delete the helpers/scripts manually in UI (Helpers / Scripts)
 
 4) **Remove stored data (manual flights, preview, directory cache)**
    - Delete the following files from `/config/.storage/`:
-     - `flight_dashboard.manual_flights`
-     - `flight_dashboard.preview`
-     - `flight_dashboard.directory_cache`
+     - `flight_status_tracker.manual_flights`
+     - `flight_status_tracker.preview`
+     - `flight_status_tracker.directory_cache`
    - Restart Home Assistant
 
 5) **Remove Lovelace resources / custom cards (optional)**
@@ -166,7 +166,7 @@ Use this if you want to fully remove the integration and its data.
    - Also remove any Lovelace resources if you added them manually.
 
 6) **Remove dashboards/cards**
-   - Delete any dashboards/cards you added for Flight Dashboard.
+   - Delete any dashboards/cards you added for Flight Status Tracker.
 
 ## Status Refresh Policy
 
@@ -341,7 +341,7 @@ views:
           show_header_toggle: false
         filter:
           template: >
-            {% set flights = state_attr('sensor.flight_dashboard_upcoming_flights','flights') or [] %} [
+            {% set flights = state_attr('sensor.flight_status_tracker_upcoming_flights','flights') or [] %} [
             {%- for f in flights -%}
 
               {
@@ -407,7 +407,7 @@ views:
                 "{%- set arr_label = f.arr.airport.iata -%}"
 
                 "type": "custom:mushroom-template-card",
-                "entity": "sensor.flight_dashboard_upcoming_flights",
+                "entity": "sensor.flight_status_tracker_upcoming_flights",
                 "picture": "{{ f.airline_logo_url }}",
                 "primary": "{{ f.airline_code }} {{ f.flight_number }} · {{ dep_label }} → {{ arr_label }} · {{ dep_date }} · {{ (f.get('delay_status') or "unknown") | title }} · ({{ (f.status_state or "unknown") | title }})",
                 "state": "{{ (f.status_state or 'unknown') | title }}",
@@ -453,7 +453,7 @@ views:
                 "tap_action": {
                   "action": "call-service",
                   "service": "select.select_option",
-                  "target": { "entity_id": "select.flight_dashboard_selected_flight" },
+                  "target": { "entity_id": "select.flight_status_tracker_selected_flight" },
                   "data": { "option": "{{ f.flight_key }}" }
                 }
               }{{ "," if not loop.last else "" }}
@@ -488,7 +488,7 @@ views:
                 name: Notes (optional)
           - type: custom:mushroom-template-card
             picture: >
-              {% set p = state_attr('sensor.flight_dashboard_add_preview','preview') or {} %}
+              {% set p = state_attr('sensor.flight_status_tracker_add_preview','preview') or {} %}
               {% set f = p.get('flight') or {} %}
               {% if f.get('airline_logo_url') %}
                 {{ f.get('airline_logo_url') }}
@@ -496,7 +496,7 @@ views:
                 https://pics.avs.io/64/64/{{ (f.get('airline_code') or '') | upper }}.png
               {% endif %}
             primary: >
-              {% set p = state_attr('sensor.flight_dashboard_add_preview','preview') or {} %}
+              {% set p = state_attr('sensor.flight_status_tracker_add_preview','preview') or {} %}
               {% set f = p.get('flight') or {} %}
               {% set dep = f.get('dep') or {} %}
               {% set arr = f.get('arr') or {} %}
@@ -514,7 +514,7 @@ views:
               {{ dep_air.get('iata') or '—' }} ({{ dep_hm or '—' }} {{ dep_air.get('tz_short') or '' }})
               → {{ arr_air.get('iata') or '—' }} ({{ arr_hm or '—' }} {{ arr_air.get('tz_short') or '' }}{% if arr_date_fmt and dep_date_fmt and arr_date_fmt != dep_date_fmt %} · {{ arr_date_fmt }}{% endif %})
             secondary: >
-              {% set p = state_attr('sensor.flight_dashboard_add_preview','preview') or {} %}
+              {% set p = state_attr('sensor.flight_status_tracker_add_preview','preview') or {} %}
               {% set f = p.get('flight') or {} %}
               {% set airline_name = f.get('airline_name') or f.get('airline_code') or '—' %}
               {% if p.get('hint') %}
@@ -563,31 +563,31 @@ views:
         title: Remove a flight
         show_header_toggle: false
         entities:
-          - entity: select.flight_dashboard_remove_flight
+          - entity: select.flight_status_tracker_remove_flight
             name: Select flight to remove
-          - entity: button.flight_dashboard_remove_selected_flight
+          - entity: button.flight_status_tracker_remove_selected_flight
             name: Remove selected flight
 
       - type: vertical-stack
         cards:
           - type: entities
-            title: Flight Dashboard Diagnostics
+            title: Flight Status Tracker Diagnostics
             show_header_toggle: false
             entities:
-              - entity: sensor.flight_dashboard_fr24_usage
+              - entity: sensor.flight_status_tracker_fr24_usage
                 name: FR24 usage (credits in last period)
-              - entity: sensor.flight_dashboard_upcoming_flights
+              - entity: sensor.flight_status_tracker_upcoming_flights
                 name: Upcoming flights (summary)
-              - entity: sensor.flight_dashboard_provider_blocks
+              - entity: sensor.flight_status_tracker_provider_blocks
                 name: Provider blocks
-              - entity: button.flight_dashboard_refresh_now
+              - entity: button.flight_status_tracker_refresh_now
                 name: Refresh now
-              - entity: button.flight_dashboard_remove_landed_flights
+              - entity: button.flight_status_tracker_remove_landed_flights
                 name: Remove arrived flights
           - type: markdown
             title: Provider Blocks Detail
             content: >
-              {% set p = state_attr('sensor.flight_dashboard_provider_blocks','providers') or {} %}
+              {% set p = state_attr('sensor.flight_status_tracker_provider_blocks','providers') or {} %}
               {% if p %}
               {% for name, info in p.items() %}
               {% set until_dt = info.until and as_datetime(info.until) %}
@@ -661,7 +661,7 @@ type: entities
 title: Remove a flight
 show_header_toggle: false
 entities:
-  - entity: select.flight_dashboard_remove_flight
+  - entity: select.flight_status_tracker_remove_flight
     name: Select flight to remove
   - type: button
     name: Remove selected flight
@@ -682,24 +682,24 @@ Use this **Diagnostics** stack for a quick health check of providers and refresh
 type: vertical-stack
 cards:
   - type: entities
-    title: Flight Dashboard Diagnostics
+    title: Flight Status Tracker Diagnostics
     show_header_toggle: false
     entities:
-      - entity: sensor.flight_dashboard_upcoming_flights
+      - entity: sensor.flight_status_tracker_upcoming_flights
         name: Upcoming flights (summary)
-      - entity: sensor.flight_dashboard_fr24_usage
+      - entity: sensor.flight_status_tracker_fr24_usage
         name: FR24 usage (credits in last period)
-      - entity: sensor.flight_dashboard_provider_blocks
+      - entity: sensor.flight_status_tracker_provider_blocks
         name: Provider blocks
-      - entity: button.flight_dashboard_refresh_now
+      - entity: button.flight_status_tracker_refresh_now
         name: Refresh now
-      - entity: button.flight_dashboard_remove_landed_flights
+      - entity: button.flight_status_tracker_remove_landed_flights
         name: Remove landed flights
   - type: markdown
     title: Provider Blocks Detail
     content: >
       {% set p =
-      state_attr('sensor.flight_dashboard_provider_blocks','providers') or {} %}
+      state_attr('sensor.flight_status_tracker_provider_blocks','providers') or {} %}
       {% if p %} {% for name, info in p.items() %} {% set until_dt = info.until
       and as_datetime(info.until) %} - **{{ name }}** blocked until
         {{ until_dt and (as_timestamp(until_dt) | timestamp_custom('%d %b %H:%M', true)) or info.until }}
@@ -708,7 +708,7 @@ cards:
 ```
   - type: custom:tailwindcss-template-card
     content: >
-      {% set p = state_attr('sensor.flight_dashboard_add_preview','preview') or {} %}
+      {% set p = state_attr('sensor.flight_status_tracker_add_preview','preview') or {} %}
       {% set f = p.get('flight') %}
       {% if not f %}
         <div class='rounded-2xl bg-[rgba(255,255,255,0.04)] p-4'>
@@ -1009,7 +1009,7 @@ cards:
     filter:
       template: >
         {% set flights =
-        state_attr('sensor.flight_dashboard_upcoming_flights','flights') or []
+        state_attr('sensor.flight_status_tracker_upcoming_flights','flights') or []
         %} {% set flights = flights | sort(attribute='dep.scheduled') %} [ {%-
         for f in flights -%}
 
@@ -1286,31 +1286,31 @@ cards:
 #### Diagnostics
 Use the **Diagnostics** stack from the Manage Flights dashboard above.
 ## Services
-### `flight_dashboard.preview_flight`
+### `flight_status_tracker.preview_flight`
 Preview a flight before saving it.
 
-### `flight_dashboard.confirm_add`
+### `flight_status_tracker.confirm_add`
 Confirm and save the current preview.
 
-### `flight_dashboard.add_flight`
+### `flight_status_tracker.add_flight`
 Add a flight directly using minimal inputs.
 
-### `flight_dashboard.clear_preview`
+### `flight_status_tracker.clear_preview`
 Clear the preview.
 
-### `flight_dashboard.add_manual_flight`
+### `flight_status_tracker.add_manual_flight`
 Add a flight with full manual inputs.
 
-### `flight_dashboard.remove_manual_flight`
+### `flight_status_tracker.remove_manual_flight`
 Remove a manual flight by flight_key.
 
-### `flight_dashboard.clear_manual_flights`
+### `flight_status_tracker.clear_manual_flights`
 Clear all manual flights.
 
-### `flight_dashboard.refresh_now`
+### `flight_status_tracker.refresh_now`
 Immediately refresh upcoming flights and fetch live status for all active flights (bypasses the normal polling window).
 
-### `flight_dashboard.prune_landed`
+### `flight_status_tracker.prune_landed`
 Remove past flights (arrival time older than cutoff). Optional `hours` delay after arrival.
 
 ## Notes

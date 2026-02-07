@@ -7,21 +7,21 @@
 - **Schedule lookup**: `schedule_lookup.py` enriches minimal inputs using provider APIs.
 - **Status**: `status_manager.py` applies cached status and schedules smart refreshes.
 - **Sensor**: `sensor.py` exposes the unified flight list in attributes.
-- **Refresh now**: `flight_dashboard.refresh_now` triggers an immediate rebuild.
+- **Refresh now**: `flight_status_tracker.refresh_now` triggers an immediate rebuild.
 - **Auto prune**: optional removal of landed/cancelled manual flights in `sensor.py`.
 
 ## Testing
 Recommended quick checks:
 1) Restart Home Assistant and confirm the integration loads.
-2) Call `flight_dashboard.preview_flight` with airline + flight number + date.
-3) Call `flight_dashboard.confirm_add` and confirm the sensor updates.
-4) Press `button.flight_dashboard_refresh_now` to force a refresh.
+2) Call `flight_status_tracker.preview_flight` with airline + flight number + date.
+3) Call `flight_status_tracker.confirm_add` and confirm the sensor updates.
+4) Press `button.flight_status_tracker_refresh_now` to force a refresh.
 
 ### FR24 Sandbox
 Enable **Use FR24 sandbox** in the integration options and set the sandbox key.
 
 ### Demo package
-Copy `testing/flight_dashboard_demo.yaml` into your HA `config/packages/` and restart.
+Copy `testing/flight_status_tracker_demo.yaml` into your HA `config/packages/` and restart.
 
 ## Developer Workflow
 - Symlink the integration into your HA config for rapid iteration.

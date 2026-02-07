@@ -11,7 +11,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .const import EVENT_UPDATED, SIGNAL_MANUAL_FLIGHTS_UPDATED
 
-SENSOR_ENTITY_ID = "sensor.flight_dashboard_upcoming_flights"
+SENSOR_ENTITY_ID = "sensor.flight_status_tracker_upcoming_flights"
 
 
 def _option_for_flight(f: dict[str, Any]) -> str:
@@ -30,7 +30,7 @@ def _sanitize_option(option: str) -> str:
 
 class FlightDashboardRemoveFlightSelect(SelectEntity):
     _attr_name = "Flight Dashboard Remove Flight"
-    _attr_unique_id = "flight_dashboard_remove_flight_select"
+    _attr_unique_id = "flight_status_tracker_remove_flight_select"
     _attr_icon = "mdi:airplane-remove"
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -87,7 +87,7 @@ class FlightDashboardRemoveFlightSelect(SelectEntity):
 
 class FlightDashboardSelectedFlightSelect(SelectEntity):
     _attr_name = "Flight Dashboard Selected Flight"
-    _attr_unique_id = "flight_dashboard_selected_flight"
+    _attr_unique_id = "flight_status_tracker_selected_flight"
     _attr_icon = "mdi:airplane"
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:

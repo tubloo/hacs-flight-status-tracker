@@ -14,7 +14,7 @@ from .const import SIGNAL_PREVIEW_UPDATED
 
 class FlightDashboardAddPreviewSensor(SensorEntity):
     _attr_name = "Flight Dashboard Add Preview"
-    _attr_unique_id = "flight_dashboard_add_preview"
+    _attr_unique_id = "flight_status_tracker_add_preview"
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self.hass = hass

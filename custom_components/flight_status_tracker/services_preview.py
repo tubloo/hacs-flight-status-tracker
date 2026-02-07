@@ -4,11 +4,11 @@ This module is intentionally self-contained and does not rely on a specific
 resolver function name from status_resolver.py (which may change over time).
 
 Preview flow:
-1) User calls flight_dashboard.preview_flight with airline + flight_number + date
+1) User calls flight_status_tracker.preview_flight with airline + flight_number + date
 2) We store a preview object in storage immediately (so UI updates)
 3) If a status/schedule provider is available, we attempt to enrich the preview
-4) User calls flight_dashboard.confirm_add to persist as a manual flight
-5) User calls flight_dashboard.clear_preview to clear preview
+4) User calls flight_status_tracker.confirm_add to persist as a manual flight
+5) User calls flight_status_tracker.clear_preview to clear preview
 """
 from __future__ import annotations
 

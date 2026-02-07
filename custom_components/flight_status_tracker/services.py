@@ -129,7 +129,7 @@ async def async_register_services(hass: HomeAssistant, _options_provider: Any | 
         hours = int(data.get("hours", 0))
         cutoff = dt_util.utcnow() - timedelta(hours=hours)
 
-        st = hass.states.get("sensor.flight_dashboard_upcoming_flights")
+        st = hass.states.get("sensor.flight_status_tracker_upcoming_flights")
         flights = (st.attributes.get("flights") if st else None) or []
 
         removed = 0

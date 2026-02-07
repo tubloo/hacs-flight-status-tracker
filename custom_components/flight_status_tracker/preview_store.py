@@ -9,7 +9,7 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant
 
-DOMAIN = "flight_dashboard"
+DOMAIN = "flight_status_tracker"
 DATA_KEY = "add_preview"
 
 

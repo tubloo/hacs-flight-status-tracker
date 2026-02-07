@@ -19,8 +19,8 @@ input_datetime:
 template:
   - binary_sensor:
       - name: FD Preview Ready
-        state: "{{ is_state('sensor.flight_dashboard_add_preview', 'ready') }}"
-        icon: "{{ 'mdi:check-circle' if is_state('sensor.flight_dashboard_add_preview', 'ready') else 'mdi:clock-outline' }}"
+        state: "{{ is_state('sensor.flight_status_tracker_add_preview', 'ready') }}"
+        icon: "{{ 'mdi:check-circle' if is_state('sensor.flight_status_tracker_add_preview', 'ready') else 'mdi:clock-outline' }}"
 
 script:
   fd_preview_flight:
@@ -36,7 +36,7 @@ script:
             {{ travellers_raw.split(',') | map('trim') | select('string') | list }}
             {% endif %}
           notes: "{{ states('input_text.fd_notes') | trim }}"
-      - service: flight_dashboard.preview_flight
+      - service: flight_status_tracker.preview_flight
         data:
           query: "{{ q }}"
           date: "{{ date }}"
@@ -47,31 +47,31 @@ script:
     alias: "Flight Dashboard: Confirm add preview"
     mode: single
     sequence:
-      - service: flight_dashboard.confirm_add
+      - service: flight_status_tracker.confirm_add
 
   fd_clear_preview:
     alias: "Flight Dashboard: Clear preview"
     mode: single
     sequence:
-      - service: flight_dashboard.clear_preview
+      - service: flight_status_tracker.clear_preview
 
   fd_refresh_now:
     alias: "Flight Dashboard: Refresh now"
     mode: single
     sequence:
-      - service: flight_dashboard.refresh_now
+      - service: flight_status_tracker.refresh_now
 
   fd_remove_selected:
     alias: "Flight Dashboard: Remove selected flight"
     mode: single
     sequence:
       - variables:
-          selected: "{{ states('select.flight_dashboard_remove_flight') }}"
+          selected: "{{ states('select.flight_status_tracker_remove_flight') }}"
           flight_key: "{{ selected.split(' | ')[0] if ' | ' in selected else '' }}"
       - choose:
           - conditions: "{{ flight_key | length > 0 }}"
             sequence:
-              - service: flight_dashboard.remove_manual_flight
+              - service: flight_status_tracker.remove_manual_flight
                 data:
                   flight_key: "{{ flight_key }}"
 
@@ -79,6 +79,6 @@ script:
     alias: "Flight Dashboard: Remove landed flights"
     mode: single
     sequence:
-      - service: flight_dashboard.prune_landed
+      - service: flight_status_tracker.prune_landed
         data:
           hours: 0

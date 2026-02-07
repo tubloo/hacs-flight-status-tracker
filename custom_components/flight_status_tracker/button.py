@@ -16,8 +16,8 @@ from .const import SERVICE_REFRESH_NOW, SERVICE_PRUNE_LANDED
 from .preview_store import async_get_preview, async_set_preview
 from .manual_store import async_add_manual_flight_record
 
-SELECT_ENTITY_ID = "select.flight_dashboard_remove_flight"
-UPCOMING_SENSOR = "sensor.flight_dashboard_upcoming_flights"
+SELECT_ENTITY_ID = "select.flight_status_tracker_remove_flight"
+UPCOMING_SENSOR = "sensor.flight_status_tracker_upcoming_flights"
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ def _get_include_past_hours(hass: HomeAssistant) -> int:
 
 class FlightDashboardRemoveSelectedFlightButton(ButtonEntity):
     _attr_name = "Flight Dashboard Remove Selected Flight"
-    _attr_unique_id = "flight_dashboard_remove_selected_flight"
+    _attr_unique_id = "flight_status_tracker_remove_selected_flight"
     _attr_icon = "mdi:airplane-remove"
 
     def __init__(self, hass: HomeAssistant) -> None:
@@ -85,7 +85,7 @@ class FlightDashboardRemoveSelectedFlightButton(ButtonEntity):
 
 class FlightDashboardClearManualFlightsButton(ButtonEntity):
     _attr_name = "Flight Dashboard Clear Manual Flights"
-    _attr_unique_id = "flight_dashboard_clear_manual_flights"
+    _attr_unique_id = "flight_status_tracker_clear_manual_flights"
     _attr_icon = "mdi:delete-sweep"
 
     def __init__(self, hass: HomeAssistant) -> None:
@@ -97,7 +97,7 @@ class FlightDashboardClearManualFlightsButton(ButtonEntity):
 
 class FlightDashboardRefreshNowButton(ButtonEntity):
     _attr_name = "Flight Dashboard Refresh Now"
-    _attr_unique_id = "flight_dashboard_refresh_now"
+    _attr_unique_id = "flight_status_tracker_refresh_now"
     _attr_icon = "mdi:refresh"
 
     def __init__(self, hass: HomeAssistant) -> None:
@@ -109,7 +109,7 @@ class FlightDashboardRefreshNowButton(ButtonEntity):
 
 class FlightDashboardPruneLandedButton(ButtonEntity):
     _attr_name = "Flight Dashboard Remove Landed Flights"
-    _attr_unique_id = "flight_dashboard_remove_landed"
+    _attr_unique_id = "flight_status_tracker_remove_landed"
     _attr_icon = "mdi:airplane-off"
 
     def __init__(self, hass: HomeAssistant) -> None:
@@ -121,7 +121,7 @@ class FlightDashboardPruneLandedButton(ButtonEntity):
 
 class FlightDashboardConfirmAddPreviewButton(ButtonEntity):
     _attr_name = "Flight Dashboard Confirm Add Preview"
-    _attr_unique_id = "flight_dashboard_confirm_add_preview"
+    _attr_unique_id = "flight_status_tracker_confirm_add_preview"
     _attr_icon = "mdi:check-circle-outline"
 
     def __init__(self, hass: HomeAssistant) -> None:
@@ -205,7 +205,7 @@ class FlightDashboardConfirmAddPreviewButton(ButtonEntity):
 
 class FlightDashboardClearAddPreviewButton(ButtonEntity):
     _attr_name = "Flight Dashboard Clear Add Preview"
-    _attr_unique_id = "flight_dashboard_clear_add_preview"
+    _attr_unique_id = "flight_status_tracker_clear_add_preview"
     _attr_icon = "mdi:close-circle-outline"
 
     def __init__(self, hass: HomeAssistant) -> None:

@@ -405,7 +405,7 @@ class FlightDashboardSelectedFlightSensor(SensorEntity):
 
         self._unsub_state = async_track_state_change_event(
             self.hass,
-            ["sensor.flight_dashboard_upcoming_flights", "select.flight_dashboard_selected_flight"],
+            ["sensor.flight_status_tracker_upcoming_flights", "select.flight_status_tracker_selected_flight"],
             _kick,
         )
         self._unsub_bus = self.hass.bus.async_listen(EVENT_UPDATED, _kick)
