@@ -215,7 +215,10 @@ async def get_airline(hass: HomeAssistant, options: dict[str, Any], iata: str) -
     if source == "custom" and not airlines_url:
         airlines_url = OPENFLIGHTS_AIRLINES_URL
     try:
-        if source in ("auto", "openflights", "custom", "aviationstack", "airlabs", "fr24"):
+        # Even when directory_source is "airportsdata" (airports CSV), we still
+        # want airline names/logos. Use OpenFlights airlines.dat as the default
+        # fallback for airline metadata.
+        if source in ("airportsdata", "auto", "openflights", "custom", "aviationstack", "airlabs", "fr24"):
             data = await openflights_get_airline(hass, iata, airlines_url)
         else:
             data = None
