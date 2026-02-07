@@ -1,4 +1,4 @@
-"""Binary sensors for Flight Dashboard."""
+"""Binary sensors for Flight Status Tracker."""
 from __future__ import annotations
 
 from typing import Any
@@ -13,7 +13,7 @@ from .selected import get_selected_flight, get_flight_position
 
 
 class FlightDashboardSelectedHasPositionBinarySensor(BinarySensorEntity):
-    _attr_name = "Flight Dashboard Selected Has Position"
+    _attr_name = "Flight Status Tracker Selected Has Position"
     _attr_unique_id = "flight_status_tracker_selected_has_position"
     _attr_icon = "mdi:map-marker-radius"
 

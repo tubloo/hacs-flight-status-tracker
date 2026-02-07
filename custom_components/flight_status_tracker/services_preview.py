@@ -1,4 +1,4 @@
-"""Preview/confirm services for Flight Dashboard.
+"""Preview/confirm services for Flight Status Tracker.
 
 This module is intentionally self-contained and does not rely on a specific
 resolver function name from status_resolver.py (which may change over time).

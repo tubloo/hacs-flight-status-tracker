@@ -14,7 +14,7 @@ from .preview_store import get_preview
 class FlightDashboardAddPreviewSensor(SensorEntity):
     hass: HomeAssistant
 
-    _attr_name = "Flight Dashboard Add Preview"
+    _attr_name = "Flight Status Tracker Add Preview"
     _attr_icon = "mdi:airplane-plus"
     _attr_unique_id = "flight_status_tracker_add_preview"
 

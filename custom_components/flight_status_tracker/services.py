@@ -152,7 +152,7 @@ async def async_register_services(hass: HomeAssistant, _options_provider: Any | 
             if not isinstance(f, dict):
                 continue
             status = (f.get("status_state") or "").lower()
-            if status not in ("arrived", "cancelled"):
+            if status not in ("arrived", "cancelled", "canceled", "landed"):
                 continue
             arr = (f.get("arr") or {})
             arr_time = arr.get("actual") or arr.get("estimated") or arr.get("scheduled")
@@ -164,7 +164,7 @@ async def async_register_services(hass: HomeAssistant, _options_provider: Any | 
                 if await async_remove_manual_flight(hass, f.get("flight_key", "")):
                     removed += 1
 
-        notify(hass, f"Removed {removed} past flights", title="Flight Dashboard — Pruned")
+        notify(hass, f"Removed {removed} past flights", title="Flight Status Tracker - Pruned")
         _LOGGER.info("Removed %s past flights", removed)
 
     hass.services.async_register(DOMAIN, SERVICE_ADD_MANUAL_FLIGHT, _add, schema=ADD_SCHEMA)

@@ -1,4 +1,4 @@
-"""Storage helpers for Flight Dashboard.
+"""Storage helpers for Flight Status Tracker.
 
 This module provides:
 - Preview storage (single preview object used by preview/confirm flow)

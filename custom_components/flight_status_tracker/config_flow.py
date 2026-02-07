@@ -1,4 +1,4 @@
-"""Config flow for Flight Dashboard."""
+"""Config flow for Flight Status Tracker."""
 from __future__ import annotations
 
 import voluptuous as vol
@@ -88,7 +88,7 @@ class FlightDashboardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input=None) -> FlowResult:
         if user_input is not None:
-            return self.async_create_entry(title="Flight Dashboard", data={})
+            return self.async_create_entry(title="Flight Status Tracker", data={})
         return self.async_show_form(step_id="user", data_schema=vol.Schema({}))
 
     @staticmethod
@@ -115,8 +115,14 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
             options[CONF_INCLUDE_PAST_HOURS] = user_input[CONF_INCLUDE_PAST_HOURS]
             options[CONF_MAX_FLIGHTS] = user_input[CONF_MAX_FLIGHTS]
             options[CONF_MERGE_TOLERANCE_HOURS] = user_input[CONF_MERGE_TOLERANCE_HOURS]
-            options[CONF_AUTO_PRUNE_LANDED] = bool(user_input.get(CONF_AUTO_PRUNE_LANDED, False))
-            options[CONF_PRUNE_LANDED_HOURS] = max(1, int(user_input.get(CONF_PRUNE_LANDED_HOURS, 1)))
+            # Some HA builds may omit unchecked optional booleans. Use the option-flow
+            # defaults as the fallback.
+            options[CONF_AUTO_PRUNE_LANDED] = bool(
+                user_input.get(CONF_AUTO_PRUNE_LANDED, DEFAULT_AUTO_PRUNE_LANDED)
+            )
+            options[CONF_PRUNE_LANDED_HOURS] = max(
+                1, int(user_input.get(CONF_PRUNE_LANDED_HOURS, DEFAULT_PRUNE_LANDED_HOURS))
+            )
             options[CONF_CACHE_DIRECTORY] = bool(user_input.get(CONF_CACHE_DIRECTORY, DEFAULT_CACHE_DIRECTORY))
             options[CONF_CACHE_TTL_DAYS] = int(user_input.get(CONF_CACHE_TTL_DAYS, DEFAULT_CACHE_TTL_DAYS))
             options[CONF_DIRECTORY_AIRLINES_URL] = user_input.get(CONF_DIRECTORY_AIRLINES_URL, "").strip()

@@ -475,7 +475,10 @@ async def lookup_schedule(
 
     # If no provider keys configured
     if not (av_key or al_key or fa_key or fr24_key):
-        return {"error": "no_provider", "hint": "No schedule provider configured. Add an API key in Flight Dashboard options."}
+        return {
+            "error": "no_provider",
+            "hint": "No schedule provider configured. Add an API key in Flight Status Tracker options.",
+        }
 
     # If we reach here, we couldn't match (or providers not implemented for schedule lookups)
     return {"error": "no_match", "hint": "No match found for that date (or provider limits). Try a different date."}

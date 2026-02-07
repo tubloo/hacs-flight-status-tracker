@@ -1,4 +1,4 @@
-"""Flight Dashboard sensor: exposes canonical flight timeline fields.
+"""Flight Status Tracker sensor: exposes canonical flight timeline fields.
 
 Sensor rebuilds automatically when manual flights change (dispatcher signal).
 """
@@ -33,7 +33,7 @@ SCHEMA_VERSION = 3
 _LOGGER = logging.getLogger(__name__)
 
 SCHEMA_DOC = """\
-Flight Dashboard schema (v3)
+Flight Status Tracker schema (v3)
 
 Per flight:
 - dep.scheduled/estimated/actual
@@ -99,7 +99,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities) -> N
 
 
 class FlightDashboardUpcomingFlightsSensor(SensorEntity):
-    _attr_name = "Flight Dashboard Upcoming Flights"
+    _attr_name = "Flight Status Tracker Upcoming Flights"
     _attr_icon = "mdi:airplane-clock"
 
     def __init__(self, hass: HomeAssistant, entry) -> None:
@@ -390,7 +390,7 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
 
 
 class FlightDashboardSelectedFlightSensor(SensorEntity):
-    _attr_name = "Flight Dashboard Selected Flight"
+    _attr_name = "Flight Status Tracker Selected Flight"
     _attr_icon = "mdi:airplane"
 
     def __init__(self, hass: HomeAssistant, entry) -> None:
@@ -449,7 +449,7 @@ class FlightDashboardSelectedFlightSensor(SensorEntity):
 
 
 class FlightDashboardFr24UsageSensor(SensorEntity):
-    _attr_name = "Flight Dashboard FR24 Usage"
+    _attr_name = "Flight Status Tracker FR24 Usage"
     _attr_icon = "mdi:chart-box"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_should_poll = False
@@ -566,7 +566,7 @@ class FlightDashboardFr24UsageSensor(SensorEntity):
 
 
 class FlightDashboardProviderBlockSensor(SensorEntity):
-    _attr_name = "Flight Dashboard Provider Blocks"
+    _attr_name = "Flight Status Tracker Provider Blocks"
     _attr_icon = "mdi:shield-alert"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_should_poll = False

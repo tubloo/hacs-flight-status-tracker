@@ -1,5 +1,7 @@
 # Flight Status Tracker (Home Assistant)
 
+> This project was created with the assistance of OpenAI Codex.
+
 Flight Status Tracker is a Home Assistant integration that tracks upcoming flights and their status.
 It lets you preview a flight before saving it and then keeps status updated with smart polling.
 
@@ -11,6 +13,15 @@ It lets you preview a flight before saving it and then keeps status updated with
 Flight Status Tracker is **per-user and BYO-API-keys**. It does **not** operate any shared backend.
 Status and schedule lookups are performed directly from your Home Assistant instance to the configured
 provider APIs using your own keys.
+
+The integration stores your manual flights (and any optional travellers/notes you add) locally in your
+Home Assistant storage. It does not send travellers/notes to providers.
+
+## Disclaimer
+
+- This is an unofficial, community integration. It is not affiliated with any airline or provider.
+- Flight data can be incomplete, delayed, or incorrect depending on provider quality and rate limits.
+- Use this as an informational aid, not as an operational source for travel decisions.
 
 ## Installation
 
@@ -40,11 +51,26 @@ Core entities:
 - Actions: `button.flight_status_tracker_preview_from_inputs`, `button.flight_status_tracker_confirm_add_preview`, `button.flight_status_tracker_clear_preview`
 - Flight list: `sensor.flight_status_tracker_upcoming_flights`
 
+Workflow: set airline + number + date -> press **Search/Preview** -> press **Add Flight**.
+
+For a detailed walkthrough and troubleshooting, see `docs/guide.md`.
+
 ## Configuration Notes
 
 - **Schedule provider** is used for preview/add (must return scheduled times).
 - **Status provider** is used for live status updates.
 - Provider timestamps are normalized to UTC internally.
+- **Position provider** is optional and is disabled by default.
+
+## Defaults (when Options are untouched)
+
+If you never open the Options UI, Home Assistant can keep `entry.options` empty. The integration still
+uses sensible defaults:
+- Include past hours: `24`
+- Days ahead: `120`
+- Auto-remove past flights: `true`
+- Remove past flights after (hours): `1`
+- Position provider: `disabled`
 
 ## Services
 
@@ -84,3 +110,13 @@ These examples use optional custom frontend cards (install via **HACS > Frontend
 - `TailwindCSS Template Card` (`custom:tailwindcss-template-card`)
 
 If a card is not listed in HACS, add its GitHub repo under **HACS > Frontend > Custom repositories**.
+
+## Troubleshooting
+
+- Arrived flight still showing:
+  - Auto-remove only applies to `Arrived/Cancelled/Landed` and only after the configured cutoff.
+  - Press `button.flight_status_tracker_refresh_now` to rebuild now.
+  - Press `button.flight_status_tracker_remove_landed` (or call `flight_status_tracker.prune_landed`) to prune immediately.
+- Preview shows nothing:
+  - Check `sensor.flight_status_tracker_add_preview` attribute `preview` in Developer Tools -> States.
+  - Ensure the schedule provider is configured and has a valid API key.

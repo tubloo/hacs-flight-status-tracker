@@ -1,4 +1,4 @@
-"""Button entities for Flight Dashboard."""
+"""Button entities for Flight Status Tracker."""
 from __future__ import annotations
 
 import asyncio
@@ -71,7 +71,7 @@ def _get_include_past_hours(hass: HomeAssistant) -> int:
 
 
 class FlightDashboardRemoveSelectedFlightButton(ButtonEntity):
-    _attr_name = "Flight Dashboard Remove Selected Flight"
+    _attr_name = "Flight Status Tracker Remove Selected Flight"
     _attr_unique_id = "flight_status_tracker_remove_selected_flight"
     _attr_icon = "mdi:airplane-remove"
     _attr_suggested_object_id = "flight_status_tracker_remove_selected_flight"
@@ -94,7 +94,7 @@ class FlightDashboardRemoveSelectedFlightButton(ButtonEntity):
 
 
 class FlightDashboardClearManualFlightsButton(ButtonEntity):
-    _attr_name = "Flight Dashboard Clear Manual Flights"
+    _attr_name = "Flight Status Tracker Clear Manual Flights"
     _attr_unique_id = "flight_status_tracker_clear_manual_flights"
     _attr_icon = "mdi:delete-sweep"
     _attr_suggested_object_id = "flight_status_tracker_clear_manual_flights"
@@ -107,7 +107,7 @@ class FlightDashboardClearManualFlightsButton(ButtonEntity):
 
 
 class FlightDashboardRefreshNowButton(ButtonEntity):
-    _attr_name = "Flight Dashboard Refresh Now"
+    _attr_name = "Flight Status Tracker Refresh Now"
     _attr_unique_id = "flight_status_tracker_refresh_now"
     _attr_icon = "mdi:refresh"
     _attr_suggested_object_id = "flight_status_tracker_refresh_now"
@@ -120,7 +120,7 @@ class FlightDashboardRefreshNowButton(ButtonEntity):
 
 
 class FlightDashboardPruneLandedButton(ButtonEntity):
-    _attr_name = "Flight Dashboard Remove Landed Flights"
+    _attr_name = "Flight Status Tracker Remove Landed Flights"
     _attr_unique_id = "flight_status_tracker_remove_landed"
     _attr_icon = "mdi:airplane-off"
     _attr_suggested_object_id = "flight_status_tracker_remove_landed"
@@ -133,7 +133,7 @@ class FlightDashboardPruneLandedButton(ButtonEntity):
 
 
 class FlightDashboardConfirmAddPreviewButton(ButtonEntity):
-    _attr_name = "Flight Dashboard Confirm Add Preview"
+    _attr_name = "Flight Status Tracker Confirm Add Preview"
     _attr_unique_id = "flight_status_tracker_confirm_add_preview"
     _attr_icon = "mdi:check-circle-outline"
     _attr_suggested_object_id = "flight_status_tracker_confirm_add_preview"
@@ -145,16 +145,16 @@ class FlightDashboardConfirmAddPreviewButton(ButtonEntity):
         preview = await async_get_preview(self.hass)
 
         if not preview:
-            await _notify(self.hass, "Flight Dashboard", "No preview found. Run Preview Flight first.")
+            await _notify(self.hass, "Flight Status Tracker", "No preview found. Run Preview Flight first.")
             return
 
         if not preview.get("ready"):
-            await _notify(self.hass, "Flight Dashboard", "Preview is incomplete. Fix it before confirming.")
+            await _notify(self.hass, "Flight Status Tracker", "Preview is incomplete. Fix it before confirming.")
             return
 
         flight = preview.get("flight")
         if not isinstance(flight, dict):
-            await _notify(self.hass, "Flight Dashboard", "Preview data is invalid. Clear and retry.")
+            await _notify(self.hass, "Flight Status Tracker", "Preview data is invalid. Clear and retry.")
             return
 
         # Ensure travellers always exists (empty allowed)
@@ -164,7 +164,7 @@ class FlightDashboardConfirmAddPreviewButton(ButtonEntity):
         try:
             flight_key = await async_add_manual_flight_record(self.hass, flight)
         except Exception as e:
-            await _notify(self.hass, "Flight Dashboard — Add failed", str(e))
+            await _notify(self.hass, "Flight Status Tracker - Add failed", str(e))
             return
         added = {"flight_key": flight_key, **flight}
         await async_set_preview(self.hass, None)
@@ -183,7 +183,7 @@ class FlightDashboardConfirmAddPreviewButton(ButtonEntity):
         if visible:
             await _notify(
                 self.hass,
-                "Flight Dashboard — Added ✅",
+                "Flight Status Tracker - Added",
                 f"Now visible:\n{added.get('airline_code')} {added.get('flight_number')} "
                 f"{added.get('dep_airport')} → {added.get('arr_airport')}\n"
                 f"Flight key: {flight_key}",
@@ -200,17 +200,17 @@ class FlightDashboardConfirmAddPreviewButton(ButtonEntity):
             if hours_ago > include_past_hours:
                 await _notify(
                     self.hass,
-                    "Flight Dashboard — Saved (filtered) ⚠️",
+                    "Flight Status Tracker - Saved (filtered)",
                     "Flight was saved, but it's not shown because it departed too long ago.\n"
                     f"Departed ~{hours_ago:.1f}h ago, include_past_hours={include_past_hours}.\n"
-                    "Fix: increase 'Include past hours' in Flight Dashboard options.\n"
+                    "Fix: increase 'Include past hours' in Flight Status Tracker options.\n"
                     f"Flight key: {flight_key}",
                 )
                 return
 
         await _notify(
             self.hass,
-            "Flight Dashboard — Saved ⚠️",
+            "Flight Status Tracker - Saved",
             "Flight was saved, but it didn't appear in Upcoming Flights yet.\n"
             "If it's not filtered, then the sensor/provider wiring needs checking.\n"
             f"Flight key: {flight_key}",
@@ -218,7 +218,7 @@ class FlightDashboardConfirmAddPreviewButton(ButtonEntity):
 
 
 class FlightDashboardClearAddPreviewButton(ButtonEntity):
-    _attr_name = "Flight Dashboard Clear Add Preview"
+    _attr_name = "Flight Status Tracker Clear Add Preview"
     _attr_unique_id = "flight_status_tracker_clear_add_preview"
     _attr_icon = "mdi:close-circle-outline"
     _attr_suggested_object_id = "flight_status_tracker_clear_add_preview"

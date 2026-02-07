@@ -1,4 +1,4 @@
-"""Select entities for Flight Dashboard."""
+"""Select entities for Flight Status Tracker."""
 from __future__ import annotations
 
 from typing import Any
@@ -29,7 +29,7 @@ def _sanitize_option(option: str) -> str:
 
 
 class FlightDashboardRemoveFlightSelect(SelectEntity):
-    _attr_name = "Flight Dashboard Remove Flight"
+    _attr_name = "Flight Status Tracker Remove Flight"
     _attr_unique_id = "flight_status_tracker_remove_flight_select"
     _attr_icon = "mdi:airplane-remove"
 
@@ -86,7 +86,7 @@ class FlightDashboardRemoveFlightSelect(SelectEntity):
 
 
 class FlightDashboardSelectedFlightSelect(SelectEntity):
-    _attr_name = "Flight Dashboard Selected Flight"
+    _attr_name = "Flight Status Tracker Selected Flight"
     _attr_unique_id = "flight_status_tracker_selected_flight"
     _attr_icon = "mdi:airplane"
 

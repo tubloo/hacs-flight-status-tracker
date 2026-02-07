@@ -1,4 +1,4 @@
-"""Flight Dashboard integration."""
+"""Flight Status Tracker integration."""
 from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
@@ -12,7 +12,7 @@ from .providers.airportsdata.directory import AIRPORTSDATA_AIRPORTS_URL
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Flight Dashboard from a config entry."""
+    """Set up Flight Status Tracker from a config entry."""
 
     # Options provider callable (used by services to read API keys etc.)
     def _options_provider():

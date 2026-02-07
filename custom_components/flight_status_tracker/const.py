@@ -1,4 +1,4 @@
-"""Constants for Flight Dashboard.
+"""Constants for Flight Status Tracker.
 
 This file is intentionally a "compat superset" so older/newer module versions
 can import the names they expect without crashing HA at import time.
