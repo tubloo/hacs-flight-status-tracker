@@ -116,7 +116,8 @@ You can copy the script YAML directly from
 
 ## Required / Recommended Frontend Components
 
-The “fancy card” Lovelace examples use the following custom cards (optional):
+The “fancy card” Lovelace examples use the following custom cards (optional).
+Install them in **HACS → Frontend**, then restart Home Assistant:
 
 **Required for the examples below**
 - **Mushroom** cards (`custom:mushroom-*`)
@@ -124,6 +125,14 @@ The “fancy card” Lovelace examples use the following custom cards (optional)
 - **tailwindcss-template-card** (`custom:tailwindcss-template-card`)
 
 If you don’t have these, install them via HACS → Frontend, then restart HA.
+
+### Add Flight card prerequisites
+
+If you only want the **Add Flight** Lovelace card YAML, you only need:
+- **Mushroom**
+- **tailwindcss-template-card**
+
+`auto-entities` is not required for the Add Flight card itself (it is used by some of the flight list/dashboard examples).
 
 ## Helpers & Scripts (Add Flight Flow)
 
