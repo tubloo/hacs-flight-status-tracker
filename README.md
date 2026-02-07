@@ -18,27 +18,20 @@ instance to the configured provider APIs using your own keys.
 
 ## Installation
 
-### Manual (current)
-**Option A — git clone (recommended)**
-```
-cd /config/custom_components
-git clone https://github.com/tubloo/hass-integration-flight-dashboard flight_status_tracker
-```
-Then restart Home Assistant.
-
-**Option B — download ZIP**
-1. Download the repo ZIP from GitHub.
-2. Extract it.
-3. Copy `custom_components/flight_status_tracker` into `/config/custom_components/flight_status_tracker`.
-4. Restart Home Assistant.
-
-Finally, add the integration in **Settings → Devices & Services**.
-
 ### HACS (Custom Repository)
 1. HACS → **⋮** → **Custom repositories**
 2. Add this repo URL and select **Integration**
 3. Install **Flight Status Tracker** and restart Home Assistant
 4. Add the integration in **Settings → Devices & Services**
+
+### Manual (advanced)
+Manual install copies the integration folder into your HA config.
+
+1. Download the repo ZIP from GitHub (or `git clone` it anywhere).
+2. Copy `custom_components/flight_status_tracker` into your HA config:
+   - `/config/custom_components/flight_status_tracker`
+3. Restart Home Assistant.
+4. Add the integration in **Settings → Devices & Services**.
 
 ## Setup Package (Helpers + Scripts)
 
@@ -46,7 +39,9 @@ You do **not** need to create any helpers/scripts to start using this integratio
 It ships its own built-in input entities + buttons for the add-flight flow.
 
 ### Built-in Add Flight Flow (recommended, no YAML)
-After installing + adding the integration, add these entities to a dashboard (any standard Entities card works):
+After installing + adding the integration, add these entities to a dashboard (any standard Entities card works).
+
+Note: the entity IDs below are the defaults for a fresh install. If you previously installed/renamed entities, Home Assistant may keep your existing IDs; search **Settings → Devices & Services → Entities** for `flight_status_tracker_add_flight`.
 
 - `text.flight_status_tracker_add_flight_airline`
 - `text.flight_status_tracker_add_flight_number`
@@ -64,7 +59,8 @@ Workflow:
 3) Press **Confirm Add Preview**
 
 ### Optional: Package (creates HA helpers/scripts)
-If you prefer the older “helpers + scripts” approach (or want to use the Lovelace examples below unchanged), include the package file in your configuration and restart HA:
+This is only needed if you want to use *older* dashboards that referenced `input_text.fd_*` and `script.fd_*`.
+New installs should use the built-in entities/buttons above.
 
 1) Ensure `packages:` is enabled in `configuration.yaml`:
 ```yaml
@@ -160,6 +156,13 @@ Use `packages/flight_status_tracker_add_flow.yaml` or create them in UI:
 3) **Add Lovelace dashboards/cards** (optional)  
    Copy the Flight Status and Manage Flights dashboards from the examples below, or just add the built-in entities.
 
+## Migrating from `flight_dashboard` (legacy domain)
+
+If you previously used the old domain `flight_dashboard`, you can import your old manual flight list on the new Home Assistant instance using:
+- `button.flight_status_tracker_import_legacy_flights`
+
+This imports from legacy storage key `flight_dashboard.manual_flights` into `flight_status_tracker.manual_flights` (non-destructive).
+
 ## Uninstall / Cleanup
 
 Use this if you want to fully remove the integration and its data.
@@ -168,26 +171,20 @@ Use this if you want to fully remove the integration and its data.
    - Settings → Devices & Services → Flight Status Tracker → Remove
 
 2) **Remove the custom component files**
-   - Delete `/config/custom_components/flight_status_tracker/`
+   - If installed via HACS: uninstall in **HACS → Integrations**
+   - If installed manually: delete `/config/custom_components/flight_status_tracker/`
 
 3) **Remove helpers & scripts (if you used the package)**
-   - Delete `/config/packages/flight_status_tracker_add_flow.yaml`
-   - Restart Home Assistant
-   - Or delete the helpers/scripts manually in UI (Helpers / Scripts)
+   - Delete `/config/packages/flight_status_tracker_add_flow.yaml` and restart Home Assistant
+   - Then remove any remaining `input_text.fd_*` / `input_datetime.fd_*` / `script.fd_*` you created manually
 
 4) **Remove stored data (manual flights, preview, directory cache)**
    - Delete the following files from `/config/.storage/`:
      - `flight_status_tracker.manual_flights`
      - `flight_status_tracker.add_preview`
+     - `flight_status_tracker.ui_inputs`
      - `flight_status_tracker.directory_cache`
    - Restart Home Assistant
-
-## Migrating from `flight_dashboard` (legacy domain)
-
-If you previously used the old domain `flight_dashboard`, you can import your old manual flight list on the new Home Assistant instance using:
-- `button.flight_status_tracker_import_legacy_flights`
-
-This imports from legacy storage key `flight_dashboard.manual_flights` into `flight_status_tracker.manual_flights` (non-destructive).
 
 5) **Remove Lovelace resources / custom cards (optional)**
    - If you installed custom cards only for this integration, uninstall via HACS → Frontend:
@@ -506,17 +503,17 @@ views:
           - type: entities
             show_header_toggle: false
             entities:
-              - entity: input_text.fd_airline
+              - entity: text.flight_status_tracker_add_flight_airline
                 name: Airline code (e.g. EK)
-              - entity: input_text.fd_flight_number
+              - entity: text.flight_status_tracker_add_flight_number
                 name: Flight number (e.g. 236)
-              - entity: input_datetime.fd_flight_date
+              - entity: date.flight_status_tracker_add_flight_date
                 name: Date
-              - entity: input_text.fd_dep_airport
+              - entity: text.flight_status_tracker_add_flight_dep_airport
                 name: Departure airport (optional, e.g. AMD)
-              - entity: input_text.fd_travellers
+              - entity: text.flight_status_tracker_add_flight_travellers
                 name: Travellers (optional)
-              - entity: input_text.fd_notes
+              - entity: text.flight_status_tracker_add_flight_notes
                 name: Notes (optional)
           - type: custom:mushroom-template-card
             picture: >
@@ -564,32 +561,32 @@ views:
           - type: horizontal-stack
             cards:
               - type: custom:mushroom-entity-card
-                entity: script.fd_preview_flight
+                entity: button.flight_status_tracker_preview_from_inputs
                 name: Preview
                 icon: mdi:magnify
                 tap_action:
                   action: call-service
-                  service: script.turn_on
+                  service: button.press
                   target:
-                    entity_id: script.fd_preview_flight
+                    entity_id: button.flight_status_tracker_preview_from_inputs
               - type: custom:mushroom-entity-card
-                entity: script.fd_confirm_add
+                entity: button.flight_status_tracker_confirm_add_preview
                 name: Add
                 icon: mdi:content-save
                 tap_action:
                   action: call-service
-                  service: script.turn_on
+                  service: button.press
                   target:
-                    entity_id: script.fd_confirm_add
+                    entity_id: button.flight_status_tracker_confirm_add_preview
               - type: custom:mushroom-entity-card
-                entity: script.fd_clear_preview
+                entity: button.flight_status_tracker_clear_preview
                 name: Clear
                 icon: mdi:close-circle
                 tap_action:
                   action: call-service
-                  service: script.turn_on
+                  service: button.press
                   target:
-                    entity_id: script.fd_clear_preview
+                    entity_id: button.flight_status_tracker_clear_preview
 
       - type: entities
         title: Remove a flight
@@ -614,7 +611,7 @@ views:
                 name: Provider blocks
               - entity: button.flight_status_tracker_refresh_now
                 name: Refresh now
-              - entity: button.flight_status_tracker_remove_landed_flights
+              - entity: button.flight_status_tracker_remove_landed
                 name: Remove arrived flights
           - type: markdown
             title: Provider Blocks Detail
@@ -651,36 +648,36 @@ cards:
           - type: entities
             show_header_toggle: false
             entities:
-              - entity: input_text.fd_airline
+              - entity: text.flight_status_tracker_add_flight_airline
                 name: Airline code (e.g. EK)
           - type: entities
             show_header_toggle: false
             entities:
-              - entity: input_text.fd_flight_number
+              - entity: text.flight_status_tracker_add_flight_number
                 name: Flight number (e.g. 236)
       - type: horizontal-stack
         cards:
           - type: entities
             show_header_toggle: false
             entities:
-              - entity: input_datetime.fd_flight_date
+              - entity: date.flight_status_tracker_add_flight_date
                 name: Date
           - type: entities
             show_header_toggle: false
             entities:
-              - entity: input_text.fd_dep_airport
+              - entity: text.flight_status_tracker_add_flight_dep_airport
                 name: Departure airport (optional, e.g. AMD)
       - type: horizontal-stack
         cards:
           - type: entities
             show_header_toggle: false
             entities:
-              - entity: input_text.fd_travellers
+              - entity: text.flight_status_tracker_add_flight_travellers
                 name: Travellers (optional)
           - type: entities
             show_header_toggle: false
             entities:
-              - entity: input_text.fd_notes
+              - entity: text.flight_status_tracker_add_flight_notes
                 name: Notes (optional)
 
 #### Remove Flight
@@ -695,14 +692,8 @@ show_header_toggle: false
 entities:
   - entity: select.flight_status_tracker_remove_flight
     name: Select flight to remove
-  - type: button
+  - entity: button.flight_status_tracker_remove_selected_flight
     name: Remove selected flight
-    icon: mdi:delete
-    tap_action:
-      action: call-service
-      service: script.turn_on
-      target:
-        entity_id: script.fd_remove_selected_flight
 ```
 
 #### Diagnostics
@@ -725,7 +716,7 @@ cards:
         name: Provider blocks
       - entity: button.flight_status_tracker_refresh_now
         name: Refresh now
-      - entity: button.flight_status_tracker_remove_landed_flights
+      - entity: button.flight_status_tracker_remove_landed
         name: Remove landed flights
   - type: markdown
     title: Provider Blocks Detail
@@ -994,32 +985,32 @@ cards:
   - type: horizontal-stack
     cards:
       - type: custom:mushroom-entity-card
-        entity: script.fd_preview_flight
+        entity: button.flight_status_tracker_preview_from_inputs
         name: Search
         icon: mdi:magnify
         tap_action:
           action: call-service
-          service: script.turn_on
+          service: button.press
           target:
-            entity_id: script.fd_preview_flight
+            entity_id: button.flight_status_tracker_preview_from_inputs
       - type: custom:mushroom-entity-card
-        entity: script.fd_confirm_add
+        entity: button.flight_status_tracker_confirm_add_preview
         name: Add Flight
         icon: mdi:content-save
         tap_action:
           action: call-service
-          service: script.turn_on
+          service: button.press
           target:
-            entity_id: script.fd_confirm_add
+            entity_id: button.flight_status_tracker_confirm_add_preview
       - type: custom:mushroom-entity-card
-        entity: script.fd_clear_preview
+        entity: button.flight_status_tracker_clear_preview
         name: Clear
         icon: mdi:close-circle
         tap_action:
           action: call-service
-          service: script.turn_on
+          service: button.press
           target:
-            entity_id: script.fd_clear_preview
+            entity_id: button.flight_status_tracker_clear_preview
 
 ```
 
