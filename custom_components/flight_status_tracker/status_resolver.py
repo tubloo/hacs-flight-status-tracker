@@ -205,14 +205,16 @@ def apply_status(flight: dict[str, Any], status: dict[str, Any] | None) -> dict[
     # - "aircraft" (string)
     # - "aircraft_icao" / "aircraft_iata"
     # - "aircraft_model"
-    if not flight.get("aircraft_type"):
-        flight["aircraft_type"] = _pick_str(
-            status.get("aircraft_type"),
-            status.get("aircraft_model"),
-            status.get("aircraft"),
-            status.get("aircraft_icao"),
-            status.get("aircraft_iata"),
-        )
+    new_aircraft_type = _pick_str(
+        status.get("aircraft_type"),
+        status.get("aircraft_model"),
+        status.get("aircraft"),
+        status.get("aircraft_icao"),
+        status.get("aircraft_iata"),
+    )
+    # Aircraft can change due to equipment swaps; always accept non-empty provider updates.
+    if new_aircraft_type:
+        flight["aircraft_type"] = new_aircraft_type
 
     dep["airport"] = dep_air
     arr["airport"] = arr_air
