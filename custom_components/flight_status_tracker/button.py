@@ -24,6 +24,7 @@ from .ui_inputs_store import (
     KEY_TRAVELLERS,
     async_load_inputs,
 )
+from .directory import async_refresh_builtin_airlines_cache_force, async_refresh_builtin_airports_cache_force
 
 SELECT_ENTITY_ID = "select.flight_status_tracker_remove_flight"
 UPCOMING_SENSOR = "sensor.flight_status_tracker_upcoming_flights"
@@ -290,6 +291,21 @@ class FlightStatusTrackerClearPreviewButton(ButtonEntity):
         await self.hass.services.async_call(DOMAIN, SERVICE_CLEAR_PREVIEW, {}, blocking=True)
 
 
+class FlightStatusTrackerRefreshDirectoryButton(ButtonEntity):
+    _attr_name = "Flight Status Tracker Refresh Directory Data"
+    _attr_unique_id = "flight_status_tracker_refresh_directory"
+    _attr_icon = "mdi:database-refresh"
+    _attr_suggested_object_id = "flight_status_tracker_refresh_directory"
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self.hass = hass
+
+    async def async_press(self) -> None:
+        await async_refresh_builtin_airports_cache_force(self.hass)
+        await async_refresh_builtin_airlines_cache_force(self.hass)
+        self.hass.bus.async_fire(EVENT_UPDATED)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities) -> None:
     async_add_entities(
         [
@@ -301,5 +317,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
             FlightDashboardClearAddPreviewButton(hass),
             FlightStatusTrackerPreviewFromInputsButton(hass),
             FlightStatusTrackerClearPreviewButton(hass),
+            FlightStatusTrackerRefreshDirectoryButton(hass),
         ]
     )

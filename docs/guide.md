@@ -9,7 +9,7 @@ Flight Status Tracker tracks upcoming flights in Home Assistant:
 - You add flights using minimal inputs (airline code, flight number, date).
 - You can preview a flight before saving it.
 - The integration keeps statuses updated with smart polling and rate limiting.
-- Airports/airlines can be enriched from a directory source (built-in or provider-backed).
+- Airports/airlines are enriched internally using cached data files (no API keys required).
 
 ## Key Entities
 
@@ -32,6 +32,7 @@ Common entities you will use in dashboards:
   - `button.flight_status_tracker_refresh_now`
   - `button.flight_status_tracker_remove_landed`
   - `button.flight_status_tracker_remove_selected_flight`
+  - `button.flight_status_tracker_refresh_directory` (force refresh airport/airline directory cache)
 
 Note: Home Assistant also creates `update.flight_status_tracker_update` (normal update entity).
 
@@ -50,7 +51,7 @@ The integration separates providers by responsibility:
 - Schedule provider: used for preview/add to resolve airports and scheduled times.
 - Status provider: used for ongoing updates (status/times/optional gates/terminals).
 - Position provider: optional; used for live position. Disabled by default.
-- Directory source: airport/airline enrichment (built-in airportsdata, OpenFlights, or API-backed).
+- Directory enrichment: airport/airline enrichment is handled internally using data files (no API keys required).
 
 ## Options (Common)
 
@@ -60,8 +61,7 @@ These are configured in the integration Options UI (Settings > Devices & Service
 - Days ahead: horizon window for upcoming flights.
 - Auto-remove past flights: automatically removes Arrived/Cancelled/Landed manual flights after the cutoff.
 - Remove past flights after (hours): delay after arrival before removal (minimum 1 hour).
-- Cache airports/airlines: speeds up enrichment and reduces API calls.
-- Directory cache TTL: how long directory entries are considered fresh.
+Directory caching is handled internally and refreshed about monthly.
 
 ## Defaults When Options Were Never Opened
 
@@ -90,7 +90,7 @@ Stored locally under `/config/.storage/`:
 - `flight_status_tracker.manual_flights`: your saved flights
 - `flight_status_tracker.add_preview`: the current preview state
 - `flight_status_tracker.ui_inputs`: persisted UI inputs (optional convenience)
-- `flight_status_tracker.directory_cache`: cached airports/airlines (if enabled)
+- `flight_status_tracker.directory_cache`: cached airports/airlines data (refreshed about monthly)
 
 ## Privacy Notes
 
@@ -126,4 +126,3 @@ The integration works fine, but dashboards must reference the IDs present on you
 
 See `README.md` for the short checklist. If you want to remove all data, also delete the storage
 keys listed above and restart Home Assistant.
-
