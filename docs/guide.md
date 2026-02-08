@@ -32,7 +32,7 @@ Common entities you will use in dashboards:
   - `button.flight_status_tracker_refresh_now`
   - `button.flight_status_tracker_remove_landed`
   - `button.flight_status_tracker_remove_selected_flight`
-  - `button.flight_status_tracker_refresh_directory` (force refresh airport/airline directory cache)
+  - `button.flight_status_tracker_refresh_directory_data` (force refresh airport/airline directory cache; entity_id may vary)
 
 Note: Home Assistant also creates `update.flight_status_tracker_update` (normal update entity).
 

@@ -14,6 +14,8 @@ cards:
         name: Refresh now
       - entity: button.flight_status_tracker_remove_landed
         name: Remove landed flights
+      - entity: button.flight_status_tracker_refresh_directory_data
+        name: Refresh airport/airline directory data
 
   - type: markdown
     title: Provider Blocks Detail

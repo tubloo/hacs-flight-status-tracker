@@ -50,7 +50,7 @@ Core entities:
   `text.flight_status_tracker_add_flight_dep_airport`, `text.flight_status_tracker_add_flight_travellers`, `text.flight_status_tracker_add_flight_notes`
 - Actions: `button.flight_status_tracker_preview_from_inputs`, `button.flight_status_tracker_confirm_add_preview`, `button.flight_status_tracker_clear_preview`
 - Flight list: `sensor.flight_status_tracker_upcoming_flights`
-- Maintenance: `button.flight_status_tracker_refresh_now`, `button.flight_status_tracker_remove_landed`, `button.flight_status_tracker_refresh_directory`
+- Maintenance: `button.flight_status_tracker_refresh_now`, `button.flight_status_tracker_remove_landed`, `button.flight_status_tracker_refresh_directory_data` (entity_id may vary)
 
 Workflow: set airline + number + date -> press **Search/Preview** -> press **Add Flight**.
 
@@ -63,7 +63,7 @@ For a detailed walkthrough and troubleshooting, see `docs/guide.md`.
 - Provider timestamps are normalized to UTC internally.
 - **Position provider** is optional and is disabled by default.
 - Airport/airline directory enrichment is handled internally using data files and cached locally (refresh ~monthly).
-- You can force a directory refresh anytime via `button.flight_status_tracker_refresh_directory`.
+- You can force a directory refresh anytime via `button.flight_status_tracker_refresh_directory_data` (your entity_id may vary; check Developer Tools).
 
 ## Defaults (when Options are untouched)
 
