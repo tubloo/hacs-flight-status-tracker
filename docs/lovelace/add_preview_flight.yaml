@@ -69,11 +69,16 @@ cards:
         {% set dep_label = (dep_air.get('city') or dep_air.get('name') or dep_code) | title %}
         {% set arr_label = (arr_air.get('city') or arr_air.get('name') or arr_code) | title %}
 
-        {% set dep_dt = dep.get('scheduled_local') and as_datetime(dep.get('scheduled_local')) %}
-        {% set arr_dt = arr.get('scheduled_local') and as_datetime(arr.get('scheduled_local')) %}
-      {% set dep_date = dep_dt and dep_dt.strftime('%d %b (%a)') or '-' %}
-      {% set dep_time = dep_dt and dep_dt.strftime('%H:%M') or '-' %}
-      {% set arr_time = arr_dt and arr_dt.strftime('%H:%M') or '-' %}
+        {% set dep_local = dep.get('scheduled_local') %}
+        {% set arr_local = arr.get('scheduled_local') %}
+
+        {# Date: safe to parse for formatting #}
+        {% set dep_dt = dep_local and as_datetime(dep_local) %}
+        {% set dep_date = dep_dt and dep_dt.strftime('%d %b (%a)') or '-' %}
+
+        {# Time: extract HH:MM directly to avoid any timezone shifting #}
+        {% set dep_time = dep_local and (dep_local.replace(' ', 'T').split('T')[1][:5]) or '-' %}
+        {% set arr_time = arr_local and (arr_local.replace(' ', 'T').split('T')[1][:5]) or '-' %}
 
         {% set dep_tz = dep_air.get('tz_short') or '' %}
         {% set arr_tz = arr_air.get('tz_short') or '' %}
