@@ -147,6 +147,22 @@ async def async_register_services(hass: HomeAssistant, _options_provider: Any | 
         st = hass.states.get("sensor.flight_status_tracker_upcoming_flights")
         flights = (st.attributes.get("flights") if st else None) or []
 
+        def _dt_utc(val: str, tzname: str | None) -> Any:
+            dt = dt_util.parse_datetime(val) if isinstance(val, str) else None
+            if not dt:
+                return None
+            if dt.tzinfo is not None:
+                return dt_util.as_utc(dt)
+            if tzname:
+                try:
+                    from zoneinfo import ZoneInfo
+
+                    dt = dt.replace(tzinfo=ZoneInfo(tzname))
+                    return dt_util.as_utc(dt)
+                except Exception:
+                    pass
+            return dt_util.as_utc(dt_util.as_local(dt))
+
         removed = 0
         for f in flights:
             if not isinstance(f, dict):
@@ -155,11 +171,11 @@ async def async_register_services(hass: HomeAssistant, _options_provider: Any | 
             if status not in ("arrived", "cancelled", "canceled", "landed"):
                 continue
             arr = (f.get("arr") or {})
+            arr_air = (arr.get("airport") or {})
             arr_time = arr.get("actual") or arr.get("estimated") or arr.get("scheduled")
-            dt = dt_util.parse_datetime(arr_time) if isinstance(arr_time, str) else None
+            dt = _dt_utc(arr_time, arr_air.get("tz")) if isinstance(arr_time, str) else None
             if not dt:
                 continue
-            dt = dt_util.as_utc(dt) if dt.tzinfo else dt_util.as_utc(dt_util.as_local(dt))
             if dt <= cutoff:
                 if await async_remove_manual_flight(hass, f.get("flight_key", "")):
                     removed += 1

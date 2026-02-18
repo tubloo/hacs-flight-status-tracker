@@ -64,6 +64,7 @@ For a detailed walkthrough and troubleshooting, see `docs/guide.md`.
 - **Position provider** is optional and is disabled by default.
 - Airport/airline directory enrichment is handled internally using data files and cached locally (refresh ~monthly).
 - You can force a directory refresh anytime via `button.flight_status_tracker_refresh_directory_data` (your entity_id may vary; check Developer Tools).
+- Status updates use a configurable **time-based polling schedule** (different intervals far from departure vs near departure vs in-flight vs near arrival).
 
 ## Defaults (when Options are untouched)
 
@@ -72,7 +73,8 @@ uses sensible defaults:
 - Include past hours: `24`
 - Days ahead: `120`
 - Auto-remove past flights: `true`
-- Remove past flights after (hours): `1`
+- Auto-remove flight (minutes after arrival): `60`
+- Minimum API poll interval (minutes): `5`
 - Position provider: `disabled`
 
 ## Services
@@ -81,7 +83,7 @@ uses sensible defaults:
 - `flight_status_tracker.confirm_add`: save the current preview into manual flights
 - `flight_status_tracker.clear_preview`: clear preview
 - `flight_status_tracker.refresh_now`: force an immediate rebuild/refresh
-- `flight_status_tracker.prune_landed`: remove arrived/cancelled flights older than cutoff
+- `flight_status_tracker.prune_landed`: remove arrived/cancelled flights older than cutoff (service parameter is `hours`)
 
 ## Storage Keys
 
@@ -123,3 +125,7 @@ If a card is not listed in HACS, add its GitHub repo under **HACS > Frontend > C
 - Preview shows nothing:
   - Check `sensor.flight_status_tracker_add_preview` attribute `preview` in Developer Tools -> States.
   - Ensure the schedule provider is configured and has a valid API key.
+  
+## Upgrade Notes
+
+- `v0.3.0`: TripIt removed; polling minimum now uses `min_api_poll_minutes`; auto-remove delay is configured in minutes after arrival.

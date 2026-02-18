@@ -12,7 +12,7 @@ class FlightSegment:
 
     NOTE: This is a *segment* (one flight leg), before aggregation/merging.
     """
-    source: str                 # e.g. "manual", "tripit"
+    source: str                 # e.g. "manual"
     source_uid: str             # stable id within that provider
     travellers: tuple[str, ...] # people travelling on this segment
 

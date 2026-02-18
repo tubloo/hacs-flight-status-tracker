@@ -198,7 +198,11 @@ def _apply_assumed_arrival(flight: dict[str, Any], now: datetime, grace_minutes:
     flight["status"] = status
 
 
-def compute_next_refresh_seconds(flight: dict[str, Any], now: datetime, ttl_minutes: int) -> int | None:
+def compute_next_refresh_seconds(
+    flight: dict[str, Any],
+    now: datetime,
+    options: dict[str, Any],
+) -> int | None:
     """Compute next refresh interval in seconds.
 
     Strategy:
@@ -208,7 +212,34 @@ def compute_next_refresh_seconds(flight: dict[str, Any], now: datetime, ttl_minu
     - Always respect a minimum TTL to ration provider calls.
     """
     now = dt_util.as_utc(now)
-    ttl_seconds = max(60, int(ttl_minutes) * 60)
+
+    def _opt_int(key: str, default: int) -> int:
+        try:
+            return int(options.get(key, default))
+        except Exception:
+            return default
+
+    # Minimum API polling interval (minutes). Never allow below 5.
+    ttl_minutes = max(5, _opt_int("min_api_poll_minutes", 5))
+    ttl_seconds = max(60, ttl_minutes * 60)
+
+    far_thr_hours = max(0, _opt_int("far_before_dep_threshold_hours", 6))
+    far_int_minutes = max(ttl_minutes, _opt_int("far_before_dep_interval_minutes", 1440))
+    mid_thr_hours = max(0, _opt_int("mid_before_dep_threshold_hours", 2))
+    mid_int_minutes = max(ttl_minutes, _opt_int("mid_before_dep_interval_minutes", 30))
+    near_int_minutes = max(ttl_minutes, _opt_int("near_before_dep_interval_minutes", 10))
+
+    dep_pre_minutes = max(0, _opt_int("dep_window_pre_minutes", 10))
+    dep_post_minutes = max(0, _opt_int("dep_window_post_minutes", 10))
+    dep_int_minutes = max(ttl_minutes, _opt_int("dep_window_interval_minutes", 10))
+
+    mid_flight_int_minutes = max(ttl_minutes, _opt_int("mid_flight_interval_minutes", 30))
+
+    arr_pre_minutes = max(0, _opt_int("arr_window_pre_minutes", 10))
+    arr_post_minutes = max(0, _opt_int("arr_window_post_minutes", 10))
+    arr_int_minutes = max(ttl_minutes, _opt_int("arr_window_interval_minutes", 15))
+
+    stop_after_arr_minutes = max(0, _opt_int("stop_refresh_after_arrival_minutes", 60))
 
     dep = _best_time(flight, "dep", ["actual", "estimated", "scheduled"])
     arr = _best_time(flight, "arr", ["actual", "estimated", "scheduled"])
@@ -217,30 +248,42 @@ def compute_next_refresh_seconds(flight: dict[str, Any], now: datetime, ttl_minu
     if not dep and not arr:
         return None
 
-    # If far in the past, stop refreshing
-    if arr and now > arr + timedelta(hours=1):
+    # If far in the past, stop refreshing even if provider never marked Arrived.
+    if arr and now > arr + timedelta(minutes=stop_after_arr_minutes):
         return None
 
-    # In air or very close to departure -> frequent
-    if dep and now >= dep - timedelta(hours=1) and (not arr or now <= arr):
-        return max(ttl_seconds, 15 * 60)
+    # Stop refreshing once arrived/cancelled.
+    if state in ("arrived", "cancelled", "canceled", "landed"):
+        return None
+
+    # Departure focus window
+    if dep:
+        dep_window_start = dep - timedelta(minutes=dep_pre_minutes)
+        dep_window_end = dep + timedelta(minutes=dep_post_minutes)
+        if dep_window_start <= now <= dep_window_end:
+            return max(ttl_seconds, dep_int_minutes * 60)
+
+    # Arrival focus window
+    if arr:
+        arr_window_start = arr - timedelta(minutes=arr_pre_minutes)
+        arr_window_end = arr + timedelta(minutes=arr_post_minutes)
+        if arr_window_start <= now <= arr_window_end:
+            return max(ttl_seconds, arr_int_minutes * 60)
+
+    # Mid-flight (between end of departure window and start of arrival window)
+    if dep and arr:
+        mid_start = dep + timedelta(minutes=dep_post_minutes)
+        mid_end = arr - timedelta(minutes=arr_pre_minutes)
+        if mid_start <= now <= mid_end:
+            return max(ttl_seconds, mid_flight_int_minutes * 60)
 
     if dep and now < dep:
         delta = dep - now
-        # Far future: refresh occasionally (keeps estimates updated)
-        if delta > timedelta(hours=6):
-            return max(ttl_seconds, 6 * 60 * 60)
-        if delta > timedelta(hours=2):
-            return max(ttl_seconds, 30 * 60)
-        return max(ttl_seconds, 10 * 60)
-
-    # Stop refreshing once arrived/cancelled
-    if state in ("arrived", "cancelled", "landed"):
-        return None
-
-    # If diverted, treat like active/en route (refresh frequently)
-    if state == "diverted":
-        return max(ttl_seconds, 15 * 60)
+        if delta > timedelta(hours=far_thr_hours):
+            return max(ttl_seconds, far_int_minutes * 60)
+        if delta > timedelta(hours=mid_thr_hours):
+            return max(ttl_seconds, mid_int_minutes * 60)
+        return max(ttl_seconds, near_int_minutes * 60)
 
     # Fallback: periodic but not frequent
     return max(ttl_seconds, 60 * 60)
@@ -258,7 +301,7 @@ async def async_update_statuses(
     """
     cache = _status_cache(hass)
     now = dt_util.utcnow()
-    ttl_minutes = int(options.get("status_ttl_minutes", 5))
+    configured_provider = (options.get("status_provider") or "flightapi").lower()
     grace_minutes = int(options.get(CONF_DELAY_GRACE_MINUTES, 10))
 
     # Apply cached status to all flights first
@@ -270,17 +313,16 @@ async def async_update_statuses(
         if not cached:
             continue
         status = cached.get("status")
-        # If status provider changed, invalidate cached status so we refetch.
+        # If cached status appears to be for a different operating date, drop it and refetch.
         if isinstance(status, dict) and _status_date_mismatch(f, status):
             status = {
-                "provider": status_provider,
+                "provider": configured_provider,
                 "error": "date_mismatch",
                 "error_message": "Provider returned status for different operating date",
             }
         if isinstance(status, dict):
-            status_provider = (status.get("provider") or "").lower()
-            configured_provider = (options.get("status_provider") or "flightapi").lower()
-            if status_provider and status_provider != configured_provider:
+            cached_provider = (status.get("provider") or "").lower()
+            if cached_provider and cached_provider != configured_provider:
                 cache.pop(key, None)
                 continue
         if isinstance(status, dict):
@@ -329,7 +371,7 @@ async def async_update_statuses(
     # Refresh due flights (sequential to limit API calls)
     for f in due:
         state = (f.get("status_state") or "unknown").lower()
-        if state in ("arrived", "cancelled", "landed"):
+        if state in ("arrived", "cancelled", "canceled", "landed"):
             key = f.get("flight_key")
             if key:
                 cache.pop(key, None)
@@ -452,7 +494,7 @@ async def async_update_statuses(
         f["delay_minutes"] = delay_minutes
         f.update(_compute_durations(f))
         # Compute next refresh time
-        refresh_seconds = compute_next_refresh_seconds(f, now, ttl_minutes)
+        refresh_seconds = compute_next_refresh_seconds(f, now, options)
         if refresh_seconds is None:
             cache.pop(key, None)
             continue

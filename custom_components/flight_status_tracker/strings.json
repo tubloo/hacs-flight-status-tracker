@@ -8,24 +8,20 @@
       "init": {
         "title": "Options",
         "description": "Configure providers, time windows, and API keys."
-      },
-      "tripit_verifier": {
-        "title": "TripIt authorization",
-        "description": "Enter the TripIt verifier PIN from the authorization page."
       }
     },
     "error": {
-      "tripit_access_token_failed": "TripIt authorization failed. Try again.",
-      "tripit_connection_test_failed": "TripIt authorization succeeded but the connection test failed.",
-      "tripit_request_token_failed": "Could not request a TripIt token.",
-      "tripit_missing_consumer_keys": "TripIt consumer key/secret are required."
+      "min_api_poll_too_low": "Minimum API poll interval must be at least 5 minutes.",
+      "threshold_order_invalid": "Far-future threshold must be greater than mid-future threshold.",
+      "interval_below_min_api_poll": "Interval must be greater than or equal to the minimum API poll interval.",
+      "stop_before_arrival_window_end": "Stop polling after arrival must be at least as long as the arrival focus window end."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Flight Status Tracker options",
-        "description": "Select itinerary sources, schedule lookup provider, and status provider.",
+        "description": "Select providers and configure the polling schedule.",
         "data": {
           "itinerary_providers": "Itinerary providers",
           "days_ahead": "Days ahead",
@@ -34,10 +30,24 @@
           "merge_tolerance_hours": "Merge tolerance (hours)",
           "auto_prune_landed": "Auto-remove past flights",
           "prune_landed_hours": "Remove past flights after (hours)",
+          "auto_remove_after_arrival_minutes": "Auto-remove flight (minutes after arrival)",
           "status_provider": "Status provider",
           "schedule_provider": "Schedule provider",
-          "status_ttl_minutes": "Status cache TTL (minutes)",
+          "min_api_poll_minutes": "Minimum API poll interval (minutes)",
           "delay_grace_minutes": "Delay grace (minutes)",
+          "far_before_dep_threshold_hours": "Far-future threshold (hours before departure)",
+          "far_before_dep_interval_minutes": "Far-future poll interval (minutes)",
+          "mid_before_dep_threshold_hours": "Mid-future threshold (hours before departure)",
+          "mid_before_dep_interval_minutes": "Mid-future poll interval (minutes)",
+          "near_before_dep_interval_minutes": "Near-departure poll interval (minutes)",
+          "dep_window_pre_minutes": "Departure focus starts (minutes before departure)",
+          "dep_window_post_minutes": "Departure focus ends (minutes after departure)",
+          "dep_window_interval_minutes": "Departure focus poll interval (minutes)",
+          "mid_flight_interval_minutes": "Mid-flight poll interval (minutes)",
+          "arr_window_pre_minutes": "Arrival focus starts (minutes before arrival)",
+          "arr_window_post_minutes": "Arrival focus ends (minutes after arrival)",
+          "arr_window_interval_minutes": "Arrival focus poll interval (minutes)",
+          "stop_refresh_after_arrival_minutes": "Stop polling (minutes after arrival)",
           "aviationstack_access_key": "Aviationstack API key",
           "airlabs_api_key": "AirLabs API key",
           "flightapi_api_key": "FlightAPI.io API key",
@@ -46,10 +56,7 @@
           "fr24_api_key": "Flightradar24 API key",
           "fr24_sandbox_key": "Flightradar24 sandbox API key",
           "fr24_use_sandbox": "Use FR24 sandbox",
-          "fr24_api_version": "FR24 API version",
-          "tripit_consumer_key": "TripIt consumer key",
-          "tripit_consumer_secret": "TripIt consumer secret",
-          "tripit_authorize_now": "Authorize TripIt now"
+          "fr24_api_version": "FR24 API version"
         }
       }
     }

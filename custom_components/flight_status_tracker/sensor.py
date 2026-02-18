@@ -167,8 +167,8 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
         # opened Options, `entry.options` can be empty, so we must still behave
         # sensibly.
         auto_prune = bool(options.get("auto_prune_landed", True))
-        prune_hours_raw = int(options.get("prune_landed_hours", 1))
-        prune_hours = max(1, prune_hours_raw) if auto_prune else prune_hours_raw
+        prune_minutes_raw = int(options.get("auto_remove_after_arrival_minutes", int(options.get("prune_landed_hours", 1)) * 60))
+        prune_minutes = max(0, prune_minutes_raw) if auto_prune else prune_minutes_raw
 
         start = now - timedelta(hours=include_past)
         end = now + timedelta(days=days_ahead)
@@ -178,17 +178,6 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
 
         if "manual" in providers:
             segments.extend(await ManualItineraryProvider(self.hass).async_get_segments(start, end))
-
-        if "tripit" in providers:
-            try:
-                from .providers.tripit.itinerary import TripItItineraryProvider
-            except Exception as e:
-                _LOGGER.debug("TripIt provider not available: %s", e)
-            else:
-                try:
-                    segments.extend(await TripItItineraryProvider(self.hass, options).async_get_segments(start, end))
-                except Exception as e:
-                    _LOGGER.debug("TripIt provider failed: %s", e)
 
         flights = merge_segments(segments)
 
@@ -236,26 +225,45 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
 
         # Optional: auto-remove arrived/cancelled flights after arrival time
         if auto_prune:
-            cutoff = now - timedelta(hours=prune_hours)
+            cutoff = now - timedelta(minutes=prune_minutes)
             removed_manual = False
+            next_prune: datetime | None = None
             pruned: list[dict[str, Any]] = []
+
+            def _dt_utc(val: str, tzname: str | None) -> datetime | None:
+                dt = dt_util.parse_datetime(val)
+                if not dt:
+                    return None
+                if dt.tzinfo is not None:
+                    return dt_util.as_utc(dt)
+                if tzname:
+                    try:
+                        dt = dt.replace(tzinfo=ZoneInfo(tzname))
+                        return dt_util.as_utc(dt)
+                    except Exception:
+                        pass
+                return dt_util.as_utc(dt_util.as_local(dt))
+
             for f in flights:
                 if not isinstance(f, dict):
                     continue
                 status = (f.get("status_state") or "").lower()
-                if status not in ("arrived", "cancelled", "landed"):
+                if status not in ("arrived", "cancelled", "canceled", "landed"):
                     pruned.append(f)
                     continue
                 arr = (f.get("arr") or {})
+                arr_air = (arr.get("airport") or {})
                 arr_time = arr.get("actual") or arr.get("estimated") or arr.get("scheduled")
                 if not isinstance(arr_time, str):
                     pruned.append(f)
                     continue
-                dt = dt_util.parse_datetime(arr_time)
+                dt = _dt_utc(arr_time, arr_air.get("tz"))
                 if not dt:
                     pruned.append(f)
                     continue
-                dt = dt_util.as_utc(dt) if dt.tzinfo else dt_util.as_utc(dt_util.as_local(dt))
+                prune_at = dt + timedelta(minutes=prune_minutes)
+                if prune_at > now and (next_prune is None or prune_at < next_prune):
+                    next_prune = prune_at
                 if dt <= cutoff:
                     if (f.get("source") or "manual") == "manual":
                         if await async_remove_manual_flight(self.hass, f.get("flight_key", "")):
@@ -266,6 +274,9 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
             flights = pruned
             if removed_manual:
                 return
+            if next_prune and (not next_refresh or next_prune < next_refresh):
+                # Ensure we rebuild at the prune boundary even if status refresh is no longer scheduled.
+                next_refresh = next_prune
 
         for flight in flights:
             flight["editable"] = (flight.get("source") or "manual") == "manual"

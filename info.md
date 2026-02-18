@@ -14,3 +14,8 @@ Track upcoming flights in Home Assistant with minimal input.
 - Optional auto-removal of arrived/cancelled manual flights
 - Optional airport/airline directory cache (default 180 days)
 - Provider times are normalized to UTC (offset-aware timestamps are treated as authoritative; naive times are localized via airport TZ when available)
+
+Configuration is done in the integration Options UI and includes:
+- Providers (schedule/status/position)
+- Polling schedule (different intervals far from departure vs near departure vs mid-flight vs near arrival)
+- Auto-removal timing (minutes after arrival)

@@ -57,10 +57,54 @@ The integration separates providers by responsibility:
 
 These are configured in the integration Options UI (Settings > Devices & Services > Flight Status Tracker > Options).
 
-- Include past hours: include flights that departed recently (helps with timezones and near-term flights).
-- Days ahead: horizon window for upcoming flights.
-- Auto-remove past flights: automatically removes Arrived/Cancelled/Landed manual flights after the cutoff.
-- Remove past flights after (hours): delay after arrival before removal (minimum 1 hour).
+### List / horizon
+
+- Include past hours: include flights that departed recently.
+- Days ahead: how far into the future to include flights.
+- Max flights: maximum number of flights kept in the list.
+- Merge tolerance (hours): when multiple sources return the “same” flight, this prevents duplicates.
+
+### Providers
+
+- Schedule provider: used for preview/add to find airports + scheduled times.
+- Status provider: used for ongoing status updates.
+- Position provider: optional; adds live position when supported.
+
+### Auto-removal (cleanup)
+
+- Auto-remove past flights: if enabled, flights with status Arrived/Cancelled/Landed are removed after a delay.
+- Auto-remove flight (minutes after arrival): how long after arrival before removing the flight.
+  - Note: the manual prune service (`flight_status_tracker.prune_landed`) still takes an `hours` parameter.
+
+### Polling schedule (simple explanation)
+
+Instead of polling constantly, the integration uses a time-based schedule:
+
+- Far from departure: poll infrequently (e.g., once per day).
+- Near departure: poll more often.
+- Mid-flight: poll at a steady cadence.
+- Near arrival: poll more often.
+- After arrival: stop polling, and then auto-removal can remove the flight from the list.
+
+The schedule is configured using these options:
+
+- Minimum API poll interval (minutes): a safety floor; polling will never be faster than this (minimum 5 minutes).
+- Far-future threshold (hours before departure): when “far future” starts.
+- Far-future poll interval (minutes): how often to poll when far in the future.
+- Mid-future threshold (hours before departure): when to switch from far-future to mid-future.
+- Mid-future poll interval (minutes): how often to poll in mid-future.
+- Near-departure poll interval (minutes): how often to poll in the last part before departure.
+- Departure focus starts/ends (minutes before/after departure) + departure focus poll interval: extra-frequent polling around takeoff.
+- Mid-flight poll interval (minutes): polling between the departure focus window and the arrival focus window.
+- Arrival focus starts/ends (minutes before/after arrival) + arrival focus poll interval: extra-frequent polling around landing.
+- Stop polling (minutes after arrival): hard stop for status polling after arrival.
+
+Validation rules (to prevent accidental over-polling):
+- Minimum API poll interval must be **at least 5 minutes**.
+- All poll intervals must be **greater than or equal** to the minimum API poll interval.
+- Far-future threshold must be **greater than** the mid-future threshold.
+- Stop polling (minutes after arrival) must be **at least** the arrival focus “minutes after arrival”.
+
 Directory caching is handled internally and refreshed about monthly.
 
 ## Defaults When Options Were Never Opened
@@ -71,7 +115,8 @@ The integration still behaves with these defaults:
 - Include past hours: 24
 - Days ahead: 120
 - Auto-remove past flights: true
-- Remove past flights after (hours): 1
+- Auto-remove flight (minutes after arrival): 60
+- Minimum API poll interval (minutes): 5
 - Position provider: disabled
 
 ## Status Refresh Policy (High Level)
@@ -81,7 +126,15 @@ The integration aims to reduce provider calls:
 - Status refresh frequency increases as departure approaches and while in-flight.
 - After arrival/cancellation, refresh stops and the flight becomes eligible for pruning.
 
-Exact refresh intervals can vary by provider and configured TTL.
+Exact refresh intervals depend on your configured polling schedule and minimum API poll interval.
+
+## Upgrade Notes
+
+### v0.3.0
+
+- TripIt was removed (manual flights only).
+- Polling minimum is now configured via `min_api_poll_minutes` in Options (replaces the old `status_ttl_minutes` key).
+- Auto-removal of past flights is configured in **minutes** after arrival (instead of hours).
 
 ## Storage / Data
 
@@ -104,7 +157,7 @@ Stored locally under `/config/.storage/`:
 Auto-prune only removes flights when:
 
 - `status_state` is Arrived/Cancelled/Landed, and
-- arrival time is older than `now - prune_landed_hours`.
+- arrival time is older than `now - auto_remove_after_arrival_minutes`.
 
 Actions:
 
