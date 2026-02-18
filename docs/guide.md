@@ -136,6 +136,10 @@ Exact refresh intervals depend on your configured polling schedule and minimum A
 - Polling minimum is now configured via `min_api_poll_minutes` in Options (replaces the old `status_ttl_minutes` key).
 - Auto-removal of past flights is configured in **minutes** after arrival (instead of hours).
 
+### v0.3.1
+
+- Performance: reduced repeated directory-cache disk reads and reduced per-flight polling config parsing.
+
 ## Storage / Data
 
 Stored locally under `/config/.storage/`:

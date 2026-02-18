@@ -129,3 +129,4 @@ If a card is not listed in HACS, add its GitHub repo under **HACS > Frontend > C
 ## Upgrade Notes
 
 - `v0.3.0`: TripIt removed; polling minimum now uses `min_api_poll_minutes`; auto-remove delay is configured in minutes after arrival.
+- `v0.3.1`: Performance improvements (less disk I/O for directory cache; less per-flight overhead when scheduling refreshes).

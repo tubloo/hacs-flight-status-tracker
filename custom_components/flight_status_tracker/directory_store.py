@@ -7,9 +7,10 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from .const import STORAGE_KEY_DIRECTORY
+from .const import DOMAIN, STORAGE_KEY_DIRECTORY
 
 _STORE_VERSION = 1
+_HASS_DATA_STORE_KEY = "directory_store"
 
 
 def _utcnow_iso() -> str:
@@ -26,7 +27,13 @@ def _parse_dt(val: str | None) -> datetime | None:
 
 
 async def _store(hass: HomeAssistant) -> Store:
-    return Store(hass, _STORE_VERSION, STORAGE_KEY_DIRECTORY)
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    st = domain_data.get(_HASS_DATA_STORE_KEY)
+    if isinstance(st, Store):
+        return st
+    st = Store(hass, _STORE_VERSION, STORAGE_KEY_DIRECTORY)
+    domain_data[_HASS_DATA_STORE_KEY] = st
+    return st
 
 
 async def async_load_cache(hass: HomeAssistant) -> dict[str, Any]:

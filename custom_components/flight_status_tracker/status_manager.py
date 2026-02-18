@@ -198,10 +198,62 @@ def _apply_assumed_arrival(flight: dict[str, Any], now: datetime, grace_minutes:
     flight["status"] = status
 
 
+def _polling_config(options: dict[str, Any]) -> dict[str, int]:
+    """Parse polling schedule options once per update cycle.
+
+    Returns a dict of ints (seconds/minutes/hours) to keep this module lightweight.
+    """
+    def _opt_int(key: str, default: int) -> int:
+        try:
+            return int(options.get(key, default))
+        except Exception:
+            return default
+
+    # Minimum API polling interval (minutes). Never allow below 5.
+    min_poll_minutes = max(5, _opt_int("min_api_poll_minutes", 5))
+    min_poll_seconds = max(60, min_poll_minutes * 60)
+
+    far_thr_hours = max(0, _opt_int("far_before_dep_threshold_hours", 6))
+    far_int_minutes = max(min_poll_minutes, _opt_int("far_before_dep_interval_minutes", 1440))
+    mid_thr_hours = max(0, _opt_int("mid_before_dep_threshold_hours", 2))
+    mid_int_minutes = max(min_poll_minutes, _opt_int("mid_before_dep_interval_minutes", 30))
+    near_int_minutes = max(min_poll_minutes, _opt_int("near_before_dep_interval_minutes", 10))
+
+    dep_pre_minutes = max(0, _opt_int("dep_window_pre_minutes", 10))
+    dep_post_minutes = max(0, _opt_int("dep_window_post_minutes", 10))
+    dep_int_minutes = max(min_poll_minutes, _opt_int("dep_window_interval_minutes", 10))
+
+    mid_flight_int_minutes = max(min_poll_minutes, _opt_int("mid_flight_interval_minutes", 30))
+
+    arr_pre_minutes = max(0, _opt_int("arr_window_pre_minutes", 10))
+    arr_post_minutes = max(0, _opt_int("arr_window_post_minutes", 10))
+    arr_int_minutes = max(min_poll_minutes, _opt_int("arr_window_interval_minutes", 15))
+
+    stop_after_arr_minutes = max(0, _opt_int("stop_refresh_after_arrival_minutes", 60))
+
+    return {
+        "min_poll_minutes": min_poll_minutes,
+        "min_poll_seconds": min_poll_seconds,
+        "far_thr_hours": far_thr_hours,
+        "far_int_seconds": max(min_poll_seconds, far_int_minutes * 60),
+        "mid_thr_hours": mid_thr_hours,
+        "mid_int_seconds": max(min_poll_seconds, mid_int_minutes * 60),
+        "near_int_seconds": max(min_poll_seconds, near_int_minutes * 60),
+        "dep_pre_minutes": dep_pre_minutes,
+        "dep_post_minutes": dep_post_minutes,
+        "dep_int_seconds": max(min_poll_seconds, dep_int_minutes * 60),
+        "mid_flight_int_seconds": max(min_poll_seconds, mid_flight_int_minutes * 60),
+        "arr_pre_minutes": arr_pre_minutes,
+        "arr_post_minutes": arr_post_minutes,
+        "arr_int_seconds": max(min_poll_seconds, arr_int_minutes * 60),
+        "stop_after_arr_minutes": stop_after_arr_minutes,
+    }
+
+
 def compute_next_refresh_seconds(
     flight: dict[str, Any],
     now: datetime,
-    options: dict[str, Any],
+    cfg: dict[str, int],
 ) -> int | None:
     """Compute next refresh interval in seconds.
 
@@ -213,33 +265,14 @@ def compute_next_refresh_seconds(
     """
     now = dt_util.as_utc(now)
 
-    def _opt_int(key: str, default: int) -> int:
-        try:
-            return int(options.get(key, default))
-        except Exception:
-            return default
-
-    # Minimum API polling interval (minutes). Never allow below 5.
-    ttl_minutes = max(5, _opt_int("min_api_poll_minutes", 5))
-    ttl_seconds = max(60, ttl_minutes * 60)
-
-    far_thr_hours = max(0, _opt_int("far_before_dep_threshold_hours", 6))
-    far_int_minutes = max(ttl_minutes, _opt_int("far_before_dep_interval_minutes", 1440))
-    mid_thr_hours = max(0, _opt_int("mid_before_dep_threshold_hours", 2))
-    mid_int_minutes = max(ttl_minutes, _opt_int("mid_before_dep_interval_minutes", 30))
-    near_int_minutes = max(ttl_minutes, _opt_int("near_before_dep_interval_minutes", 10))
-
-    dep_pre_minutes = max(0, _opt_int("dep_window_pre_minutes", 10))
-    dep_post_minutes = max(0, _opt_int("dep_window_post_minutes", 10))
-    dep_int_minutes = max(ttl_minutes, _opt_int("dep_window_interval_minutes", 10))
-
-    mid_flight_int_minutes = max(ttl_minutes, _opt_int("mid_flight_interval_minutes", 30))
-
-    arr_pre_minutes = max(0, _opt_int("arr_window_pre_minutes", 10))
-    arr_post_minutes = max(0, _opt_int("arr_window_post_minutes", 10))
-    arr_int_minutes = max(ttl_minutes, _opt_int("arr_window_interval_minutes", 15))
-
-    stop_after_arr_minutes = max(0, _opt_int("stop_refresh_after_arrival_minutes", 60))
+    ttl_seconds = cfg["min_poll_seconds"]
+    far_thr_hours = cfg["far_thr_hours"]
+    mid_thr_hours = cfg["mid_thr_hours"]
+    dep_pre_minutes = cfg["dep_pre_minutes"]
+    dep_post_minutes = cfg["dep_post_minutes"]
+    arr_pre_minutes = cfg["arr_pre_minutes"]
+    arr_post_minutes = cfg["arr_post_minutes"]
+    stop_after_arr_minutes = cfg["stop_after_arr_minutes"]
 
     dep = _best_time(flight, "dep", ["actual", "estimated", "scheduled"])
     arr = _best_time(flight, "arr", ["actual", "estimated", "scheduled"])
@@ -261,29 +294,29 @@ def compute_next_refresh_seconds(
         dep_window_start = dep - timedelta(minutes=dep_pre_minutes)
         dep_window_end = dep + timedelta(minutes=dep_post_minutes)
         if dep_window_start <= now <= dep_window_end:
-            return max(ttl_seconds, dep_int_minutes * 60)
+            return max(ttl_seconds, cfg["dep_int_seconds"])
 
     # Arrival focus window
     if arr:
         arr_window_start = arr - timedelta(minutes=arr_pre_minutes)
         arr_window_end = arr + timedelta(minutes=arr_post_minutes)
         if arr_window_start <= now <= arr_window_end:
-            return max(ttl_seconds, arr_int_minutes * 60)
+            return max(ttl_seconds, cfg["arr_int_seconds"])
 
     # Mid-flight (between end of departure window and start of arrival window)
     if dep and arr:
         mid_start = dep + timedelta(minutes=dep_post_minutes)
         mid_end = arr - timedelta(minutes=arr_pre_minutes)
         if mid_start <= now <= mid_end:
-            return max(ttl_seconds, mid_flight_int_minutes * 60)
+            return max(ttl_seconds, cfg["mid_flight_int_seconds"])
 
     if dep and now < dep:
         delta = dep - now
         if delta > timedelta(hours=far_thr_hours):
-            return max(ttl_seconds, far_int_minutes * 60)
+            return max(ttl_seconds, cfg["far_int_seconds"])
         if delta > timedelta(hours=mid_thr_hours):
-            return max(ttl_seconds, mid_int_minutes * 60)
-        return max(ttl_seconds, near_int_minutes * 60)
+            return max(ttl_seconds, cfg["mid_int_seconds"])
+        return max(ttl_seconds, cfg["near_int_seconds"])
 
     # Fallback: periodic but not frequent
     return max(ttl_seconds, 60 * 60)
@@ -303,6 +336,7 @@ async def async_update_statuses(
     now = dt_util.utcnow()
     configured_provider = (options.get("status_provider") or "flightapi").lower()
     grace_minutes = int(options.get(CONF_DELAY_GRACE_MINUTES, 10))
+    poll_cfg = _polling_config(options)
 
     # Apply cached status to all flights first
     for f in flights:
@@ -494,7 +528,7 @@ async def async_update_statuses(
         f["delay_minutes"] = delay_minutes
         f.update(_compute_durations(f))
         # Compute next refresh time
-        refresh_seconds = compute_next_refresh_seconds(f, now, options)
+        refresh_seconds = compute_next_refresh_seconds(f, now, poll_cfg)
         if refresh_seconds is None:
             cache.pop(key, None)
             continue
