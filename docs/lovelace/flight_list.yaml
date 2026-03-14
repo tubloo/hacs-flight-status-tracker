@@ -1,14 +1,14 @@
 type: vertical-stack
 cards:
   - type: custom:tailwindcss-template-card
-    content: >
+    content: |
       {% set flights =
         state_attr('sensor.flight_status_tracker_upcoming_flights','flights')
         or state_attr('sensor.flight_dashboard_upcoming_flights','flights')
         or []
-      %}
-      <div class='text-2xl font-semibold'>Flight List ({{ flights | count }})</div>
-
+      %} <div class="text-2xl font-semibold">
+        Flight List ({{ flights | count }})
+      </div>
   - type: custom:auto-entities
     card:
       type: vertical-stack
@@ -32,8 +32,8 @@ cards:
           {%- set route_state = ui.route_state or state -%}
 
           {%- set badge = 'bg-gray-600 text-white' -%}
-          {%- set route_color = 'text-gray-600' -%}
-          {%- set time_color = 'text-gray-700' -%}
+          {%- set route_color = 'text-gray-400' -%}
+          {%- set time_color = 'text-gray-300' -%}
           {%- if badge_key == 'critical' -%}
             {%- set badge = 'bg-red-800 text-white' -%}
             {%- set route_color = 'text-red-700' -%}

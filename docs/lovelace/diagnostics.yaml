@@ -1,33 +1,61 @@
 type: vertical-stack
 cards:
+  - type: custom:mushroom-title-card
+    title: Diagnostics
+    subtitle: API usage, provider mix, and quick actions
+
+  - type: grid
+    columns: 2
+    square: false
+    cards:
+      - type: custom:mushroom-entity-card
+        entity: sensor.flight_status_tracker_api_utility_meter
+        name: Monthly API Calls
+        icon: mdi:calendar-month
+        icon_color: blue
+
+      - type: custom:mushroom-template-card
+        primary: Lifetime API Calls
+        secondary: "{{ states('sensor.flight_status_tracker_api_calls') }} calls"
+        icon: mdi:api
+        icon_color: teal
+        tap_action:
+          action: more-info
+          entity: sensor.flight_status_tracker_api_calls
+
+  - type: statistics-graph
+    title: Monthly API Trend (30d)
+    chart_type: line
+    period: day
+    days_to_show: 30
+    stat_types:
+      - sum
+    entities:
+      - sensor.flight_status_tracker_api_utility_meter
+
+  - type: custom:mushroom-template-card
+    primary: Provider Breakdown (Lifetime)
+    secondary: >
+      {% set by = state_attr('sensor.flight_status_tracker_api_calls','by_provider') or {} %}
+      FlightAPI {{ by.get('flightapi', 0) }} ·
+      AirLabs {{ by.get('airlabs', 0) }} ·
+      Aviationstack {{ by.get('aviationstack', 0) }} ·
+      FR24 {{ by.get('flightradar24', 0) }}
+    icon: mdi:chart-donut
+    icon_color: indigo
+    tap_action:
+      action: more-info
+      entity: sensor.flight_status_tracker_api_calls
+
   - type: entities
-    title: Flight Status Tracker Diagnostics
+    title: Controls
     show_header_toggle: false
     entities:
       - entity: sensor.flight_status_tracker_upcoming_flights
         name: Upcoming flights (summary)
-      - entity: sensor.flight_status_tracker_fr24_usage
-        name: FR24 usage (credits in last period)
-      - entity: sensor.flight_status_tracker_provider_blocks
-        name: Provider blocks
       - entity: button.flight_status_tracker_refresh_now
         name: Refresh now
       - entity: button.flight_status_tracker_remove_landed
         name: Remove landed flights
       - entity: button.flight_status_tracker_refresh_directory_data
         name: Refresh airport/airline directory data
-
-  - type: markdown
-    title: Provider Blocks Detail
-    content: >
-      {% set providers = state_attr('sensor.flight_status_tracker_provider_blocks','providers') or {} %}
-      {% if providers %}
-      {% for name, info in providers.items() %}
-      {% set until_dt = info.until and as_datetime(info.until) %}
-      - **{{ name }}** blocked until
-        {{ until_dt and (as_timestamp(until_dt) | timestamp_custom('%d %b %H:%M', true)) or info.until }}
-        ({{ info.seconds_remaining }}s) - {{ info.reason }}
-      {% endfor %}
-      {% else %}
-      No providers blocked.
-      {% endif %}
