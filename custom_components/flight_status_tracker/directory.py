@@ -8,6 +8,8 @@ Design goals:
 from __future__ import annotations
 
 import logging
+import csv
+from io import StringIO
 from datetime import datetime, timezone
 from typing import Any
 
@@ -49,6 +51,36 @@ def airline_logo_url(iata: str | None) -> str | None:
     if not code:
         return None
     return f"https://pics.avs.io/64/64/{code}.png"
+
+def _airline_score(item: dict[str, Any]) -> int:
+    score = 0
+    if str(item.get("active") or "").strip().upper() == "Y":
+        score += 2
+    if item.get("icao"):
+        score += 1
+    if item.get("name"):
+        score += 1
+    return score
+
+
+def _select_airline_record(records: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not records:
+        return None
+    active = [r for r in records if str(r.get("active") or "").strip().upper() == "Y"]
+    pool = active or records
+    best = max(pool, key=_airline_score)
+
+    names = {
+        str(r.get("name") or "").strip().lower()
+        for r in pool
+        if str(r.get("name") or "").strip()
+    }
+    out = dict(best)
+    if len(names) > 1:
+        # Ambiguous code in upstream dataset; avoid writing a likely-wrong label.
+        out["name"] = None
+        out["ambiguous"] = True
+    return out
 
 
 def _parse_dt(val: str | None) -> datetime | None:
@@ -114,32 +146,37 @@ async def _ensure_openflights_airlines_cache_forceable(hass: HomeAssistant, ttl_
         return
 
     now_iso = datetime.now(timezone.utc).isoformat()
-    index: dict[str, dict[str, Any]] = {}
+    by_iata: dict[str, list[dict[str, Any]]] = {}
     try:
-        for line in text.splitlines():
-            line = line.strip()
-            if not line:
-                continue
+        reader = csv.reader(StringIO(text))
+        for row in reader:
             # Format: Airline ID, Name, Alias, IATA, ICAO, Callsign, Country, Active
-            parts = [p.strip().strip('"') for p in line.split(",")]
-            if len(parts) < 8:
+            if len(row) < 8:
                 continue
-            iata_code = (parts[3] or "").strip().upper()
+            iata_code = (row[3] or "").strip().upper()
             if not iata_code or iata_code == "\\N":
                 continue
-            logo = airline_logo_url(iata_code)
-            index[iata_code] = {
+            record = {
                 "iata": iata_code,
-                "icao": (parts[4] or "").strip() or None,
-                "name": (parts[1] or "").strip() or None,
-                "country": (parts[6] or "").strip() or None,
+                "icao": (row[4] or "").strip() or None,
+                "name": (row[1] or "").strip() or None,
+                "country": (row[6] or "").strip() or None,
+                "active": (row[7] or "").strip() or None,
                 "source": "openflights",
-                "logo_url": logo,
-                "fetched_at": now_iso,
             }
+            by_iata.setdefault(iata_code, []).append(record)
     except Exception as e:
         _LOGGER.debug("OpenFlights airlines parse failed: %s", e)
         return
+
+    index: dict[str, dict[str, Any]] = {}
+    for iata_code, records in by_iata.items():
+        chosen = _select_airline_record(records)
+        if not chosen:
+            continue
+        chosen["logo_url"] = airline_logo_url(iata_code)
+        chosen["fetched_at"] = now_iso
+        index[iata_code] = chosen
 
     cache["airlines"] = index
     meta[_META_OPENFLIGHTS_AIRLINES_FETCHED_AT] = now_iso
@@ -217,25 +254,29 @@ async def get_airline(hass: HomeAssistant, options: dict[str, Any], iata: str) -
     except Exception:
         return cached
 
-    for line in text.splitlines():
-        line = line.strip()
-        if not line:
+    records: list[dict[str, Any]] = []
+    reader = csv.reader(StringIO(text))
+    for row in reader:
+        if len(row) < 8:
             continue
-        parts = [p.strip().strip('"') for p in line.split(",")]
-        if len(parts) < 8:
-            continue
-        iata_code = (parts[3] or "").strip().upper()
+        iata_code = (row[3] or "").strip().upper()
         if iata_code != iata:
             continue
-        data = {
-            "iata": iata_code,
-            "icao": (parts[4] or "").strip() or None,
-            "name": (parts[1] or "").strip() or None,
-            "country": (parts[6] or "").strip() or None,
-            "source": "openflights",
-        }
-        await async_set_airline(hass, iata_code, data)
-        return await async_get_airline(hass, iata_code)
+        records.append(
+            {
+                "iata": iata_code,
+                "icao": (row[4] or "").strip() or None,
+                "name": (row[1] or "").strip() or None,
+                "country": (row[6] or "").strip() or None,
+                "active": (row[7] or "").strip() or None,
+                "source": "openflights",
+            }
+        )
+    if records:
+        data = _select_airline_record(records) or {}
+        data["logo_url"] = airline_logo_url(iata)
+        await async_set_airline(hass, iata, data)
+        return await async_get_airline(hass, iata)
 
     return cached
 
