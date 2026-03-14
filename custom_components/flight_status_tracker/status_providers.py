@@ -162,13 +162,13 @@ async def async_fetch_status(
         return _unwrap_status(res)
 
     # Fallback: try any configured provider in priority order
-    if fr24_key:
+    if fr24_active_key:
         if is_blocked(hass, "fr24"):
             return None
         from .providers.flightradar24.status import Flightradar24StatusProvider
 
         res = await Flightradar24StatusProvider(
-            hass, api_key=fr24_key, use_sandbox=use_sandbox, api_version=fr24_version
+            hass, api_key=fr24_active_key, use_sandbox=use_sandbox, api_version=fr24_version
         ).async_get_status(flight)
         out = _unwrap_status(res)
         if isinstance(out, dict) and out.get("error") in ("rate_limited", "quota_exceeded"):

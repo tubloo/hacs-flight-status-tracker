@@ -132,9 +132,13 @@ async def async_register_services(hass: HomeAssistant, _options_provider: Any | 
             # Force an immediate rebuild + status refresh
             for sensor in list(sensors.values()):
                 try:
-                    await sensor._rebuild()  # type: ignore[attr-defined]
-                except Exception as e:
-                    _LOGGER.debug("Immediate refresh failed: %s", e)
+                    rebuild_safe = getattr(sensor, "_run_rebuild_safe", None)
+                    if callable(rebuild_safe):
+                        await rebuild_safe("service_refresh")
+                    else:
+                        await sensor._rebuild()  # type: ignore[attr-defined]
+                except Exception:
+                    _LOGGER.exception("Immediate refresh failed")
         else:
             async_dispatcher_send(hass, SIGNAL_MANUAL_FLIGHTS_UPDATED)
         _LOGGER.info("Refresh triggered")
@@ -182,6 +186,16 @@ async def async_register_services(hass: HomeAssistant, _options_provider: Any | 
 
         notify(hass, f"Removed {removed} past flights", title="Flight Status Tracker - Pruned")
         _LOGGER.info("Removed %s past flights", removed)
+
+    for service in (
+        SERVICE_ADD_MANUAL_FLIGHT,
+        SERVICE_REMOVE_MANUAL_FLIGHT,
+        SERVICE_CLEAR_MANUAL_FLIGHTS,
+        SERVICE_REFRESH_NOW,
+        SERVICE_PRUNE_LANDED,
+    ):
+        if hass.services.has_service(DOMAIN, service):
+            hass.services.async_remove(DOMAIN, service)
 
     hass.services.async_register(DOMAIN, SERVICE_ADD_MANUAL_FLIGHT, _add, schema=ADD_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_REMOVE_MANUAL_FLIGHT, _remove, schema=REMOVE_SCHEMA)

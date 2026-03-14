@@ -7,7 +7,19 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_interval
 
-from .const import DOMAIN, PLATFORMS
+from .const import (
+    DOMAIN,
+    PLATFORMS,
+    SERVICE_ADD_MANUAL_FLIGHT,
+    SERVICE_REMOVE_MANUAL_FLIGHT,
+    SERVICE_CLEAR_MANUAL_FLIGHTS,
+    SERVICE_REFRESH_NOW,
+    SERVICE_PRUNE_LANDED,
+    SERVICE_PREVIEW_FLIGHT,
+    SERVICE_CONFIRM_ADD,
+    SERVICE_CLEAR_PREVIEW,
+    SERVICE_ADD_FLIGHT,
+)
 from .services import async_register_services
 from .services_preview import async_register_preview_services
 from .directory import async_refresh_builtin_airports_cache, async_refresh_builtin_airlines_cache
@@ -26,9 +38,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Register preview/confirm/clear-preview services
     await async_register_preview_services(hass, _options_provider)
 
-    # Refresh built-in directory caches on reload if empty/stale
-    await async_refresh_builtin_airports_cache(hass)
-    await async_refresh_builtin_airlines_cache(hass)
+    # Refresh built-in directory caches on reload if empty/stale.
+    # Run in background to avoid delaying platform/entity startup on slow networks.
+    hass.async_create_task(async_refresh_builtin_airports_cache(hass))
+    hass.async_create_task(async_refresh_builtin_airlines_cache(hass))
 
     # Keep directory datasets fresh for long-running HA instances.
     # The refresh functions are TTL-guarded, so running this daily is cheap.
@@ -53,4 +66,23 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             unsub()
         except Exception:
             pass
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if not ok:
+        return False
+
+    # Remove domain services when no config entry for this integration remains.
+    if not hass.config_entries.async_entries(DOMAIN):
+        for service in (
+            SERVICE_ADD_MANUAL_FLIGHT,
+            SERVICE_REMOVE_MANUAL_FLIGHT,
+            SERVICE_CLEAR_MANUAL_FLIGHTS,
+            SERVICE_REFRESH_NOW,
+            SERVICE_PRUNE_LANDED,
+            SERVICE_PREVIEW_FLIGHT,
+            SERVICE_CONFIRM_ADD,
+            SERVICE_CLEAR_PREVIEW,
+            SERVICE_ADD_FLIGHT,
+        ):
+            if hass.services.has_service(DOMAIN, service):
+                hass.services.async_remove(DOMAIN, service)
+    return True

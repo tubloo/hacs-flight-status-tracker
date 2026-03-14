@@ -450,6 +450,10 @@ async def async_register_preview_services(
 
         hint = result.get("hint") if isinstance(result, dict) else None
 
+    for service in (SERVICE_PREVIEW_FLIGHT, SERVICE_CONFIRM_ADD, SERVICE_CLEAR_PREVIEW, SERVICE_ADD_FLIGHT):
+        if hass.services.has_service(DOMAIN, service):
+            hass.services.async_remove(DOMAIN, service)
+
     hass.services.async_register(DOMAIN, SERVICE_PREVIEW_FLIGHT, _svc_preview, schema=SERVICE_SCHEMA_PREVIEW)
     hass.services.async_register(DOMAIN, SERVICE_CONFIRM_ADD, _svc_confirm)
     hass.services.async_register(DOMAIN, SERVICE_CLEAR_PREVIEW, _svc_clear)

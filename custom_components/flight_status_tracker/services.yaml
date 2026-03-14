@@ -18,6 +18,10 @@ preview_flight:
       required: true
       selector:
         date:
+    dep_airport:
+      required: false
+      selector:
+        text:
     travellers:
       required: false
       selector:
@@ -47,6 +51,10 @@ add_flight:
       required: true
       selector:
         date:
+    dep_airport:
+      required: false
+      selector:
+        text:
     travellers:
       required: false
       selector:

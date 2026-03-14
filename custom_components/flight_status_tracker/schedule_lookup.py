@@ -114,6 +114,24 @@ def _normalize_flight_times(flight: dict[str, Any]) -> dict[str, Any]:
     return flight
 
 
+async def _lookup_mock_fixture(
+    hass: HomeAssistant, airline_code: str, flight_number: str, date_str: str
+) -> dict[str, Any] | None:
+    try:
+        from importlib import resources
+        import json
+    except Exception:
+        return None
+
+    def _load() -> dict[str, Any]:
+        data = resources.files("custom_components.flight_status_tracker.fixtures").joinpath("mock_flights.json").read_text()
+        return json.loads(data)
+
+    fixtures = await hass.async_add_executor_job(_load)
+    rec = fixtures.get(f"{airline_code}{flight_number}|{date_str}")
+    return rec if isinstance(rec, dict) else None
+
+
 async def lookup_schedule(
     hass: HomeAssistant,
     options: dict[str, Any],
@@ -169,21 +187,11 @@ async def lookup_schedule(
             order.append("mock")
     _LOGGER.debug("Schedule lookup providers order=%s pref=%s", order, schedule_pref)
 
-    if "mock" in order:
-        try:
-            from importlib import resources
-            import json
-        except Exception:
-            resources = None  # type: ignore
-        if resources:
-            def _load():
-                data = resources.files("custom_components.flight_status_tracker.fixtures").joinpath("mock_flights.json").read_text()
-                return json.loads(data)
-
-            fixtures = await hass.async_add_executor_job(_load)
-            rec = fixtures.get(f"{airline_code}{flight_number}|{date_str}")
-            if isinstance(rec, dict):
-                return {"flight": rec, "provider": "mock"}
+    # Only short-circuit on mock when explicitly selected as primary provider.
+    if order and order[0] == "mock":
+        rec = await _lookup_mock_fixture(hass, airline_code, flight_number, date_str)
+        if rec:
+            return {"flight": rec, "provider": "mock"}
 
     # Import lazily so missing deps won't crash HA if provider not used
     if "flightradar24" in order and fr24_active_key and not is_blocked(hass, "fr24"):
@@ -474,7 +482,12 @@ async def lookup_schedule(
                 return {"error": "provider_error", "hint": "FlightAPI.io error. Try another provider or verify the date.", "provider": "flightapi"}
 
     # If no provider keys configured
-    if not (av_key or al_key or fa_key or fr24_key):
+    if "mock" in order:
+        rec = await _lookup_mock_fixture(hass, airline_code, flight_number, date_str)
+        if rec:
+            return {"flight": rec, "provider": "mock"}
+
+    if not (av_key or al_key or fa_key or fr24_active_key):
         return {
             "error": "no_provider",
             "hint": "No schedule provider configured. Add an API key in Flight Status Tracker options.",

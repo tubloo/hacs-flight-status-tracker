@@ -140,6 +140,15 @@ Exact refresh intervals depend on your configured polling schedule and minimum A
 
 - Performance: reduced repeated directory-cache disk reads and reduced per-flight polling config parsing.
 
+### v0.3.2
+
+- Reliability: startup/reload and refresh scheduling fixes, including safe rebuild retry on errors.
+- Startup behavior: manual-flight update listener now attaches before the first rebuild, reducing cases where flights appeared empty until a later trigger.
+- Startup latency: directory warmup/refresh no longer blocks initial entity rendering.
+- Provider throttling: FR24 block tracking now uses a consistent key across components.
+- Services: idempotent service registration plus cleanup when the last integration entry unloads.
+- Schedule lookup: mock fixtures no longer preempt configured providers unless explicitly selected.
+
 ## Storage / Data
 
 Stored locally under `/config/.storage/`:

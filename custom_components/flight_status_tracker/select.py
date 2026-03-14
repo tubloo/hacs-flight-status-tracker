@@ -68,7 +68,7 @@ class FlightDashboardRemoveFlightSelect(SelectEntity):
         st = self.hass.states.get(SENSOR_ENTITY_ID)
         flights = (st.attributes.get("flights") if st else None) or []
 
-        opts = [_option_for_flight(f) for f in flights if f.get("flight_key")]
+        opts = [_option_for_flight(f) for f in flights if isinstance(f, dict) and f.get("flight_key")]
         if not opts:
             opts = ["No flights"]
 
@@ -125,7 +125,7 @@ class FlightDashboardSelectedFlightSelect(SelectEntity):
         st = self.hass.states.get(SENSOR_ENTITY_ID)
         flights = (st.attributes.get("flights") if st else None) or []
 
-        opts = [_option_for_flight(f) for f in flights if f.get("flight_key")]
+        opts = [_option_for_flight(f) for f in flights if isinstance(f, dict) and f.get("flight_key")]
         if not opts:
             opts = ["No flights"]
 

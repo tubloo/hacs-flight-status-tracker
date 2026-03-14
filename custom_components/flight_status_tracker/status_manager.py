@@ -497,15 +497,17 @@ async def async_update_statuses(
             if (f.get("source") or "manual") == "manual":
                 dep_air = (f.get("dep") or {}).get("airport") or {}
                 arr_air = (f.get("arr") or {}).get("airport") or {}
+                status_dep_scheduled = status.get("dep_scheduled") if isinstance(status, dict) else None
+                status_arr_scheduled = status.get("arr_scheduled") if isinstance(status, dict) else None
                 updates: dict[str, Any] = {}
                 if not f.get("dep_airport") and dep_air.get("iata"):
                     updates["dep_airport"] = dep_air.get("iata")
                 if not f.get("arr_airport") and arr_air.get("iata"):
                     updates["arr_airport"] = arr_air.get("iata")
                 if not f.get("scheduled_departure"):
-                    updates["scheduled_departure"] = (f.get("dep") or {}).get("scheduled") or status.get("dep_scheduled")
+                    updates["scheduled_departure"] = (f.get("dep") or {}).get("scheduled") or status_dep_scheduled
                 if not f.get("scheduled_arrival"):
-                    updates["scheduled_arrival"] = (f.get("arr") or {}).get("scheduled") or status.get("arr_scheduled")
+                    updates["scheduled_arrival"] = (f.get("arr") or {}).get("scheduled") or status_arr_scheduled
                 if updates:
                     await async_update_manual_flight(hass, key, updates)
 

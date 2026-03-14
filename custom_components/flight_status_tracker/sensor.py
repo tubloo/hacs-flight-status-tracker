@@ -117,15 +117,15 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
         self._next_refresh_unsub: Callable[[], None] | None = None
 
     async def async_added_to_hass(self) -> None:
-        # Rebuild now
-        await self._rebuild()
-
         # Rebuild whenever manual flights are updated
         @callback
         def _on_manual_updated() -> None:
-            self.hass.async_create_task(self._rebuild())
+            self.hass.async_create_task(self._run_rebuild_safe("manual_update"))
 
         self._unsub = async_dispatcher_connect(self.hass, SIGNAL_MANUAL_FLIGHTS_UPDATED, _on_manual_updated)
+
+        # Rebuild now
+        await self._run_rebuild_safe("startup")
 
     async def async_will_remove_from_hass(self) -> None:
         if self._unsub:
@@ -151,6 +151,28 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
             "schema_example": SCHEMA_EXAMPLE,
             "flights": self._flights,
         }
+
+    async def _run_rebuild_safe(self, reason: str) -> None:
+        """Run rebuild and ensure we always retry after an unexpected failure."""
+        try:
+            await self._rebuild()
+        except Exception:
+            _LOGGER.exception("Flight list rebuild failed (%s)", reason)
+            if self._next_refresh_unsub:
+                return
+            retry_at = dt_util.utcnow() + timedelta(minutes=5)
+
+            @callback
+            def _retry(_now) -> None:
+                self.hass.async_create_task(self._run_rebuild_safe("retry_after_error"))
+
+            self._next_refresh_unsub = async_track_point_in_utc_time(self.hass, _retry, retry_at)
+
+    async def _warm_directory_cache_safe(self, options: dict[str, Any], flights: list[dict[str, Any]]) -> None:
+        try:
+            await warm_directory_cache(self.hass, options, flights)
+        except Exception:
+            _LOGGER.debug("Directory warmup failed", exc_info=True)
 
     async def _rebuild(self) -> None:
         """Rebuild the flight list and schedule the next smart refresh."""
@@ -181,8 +203,8 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
 
         flights = merge_segments(segments)
 
-        # Warm directory cache on first run using known flights
-        await warm_directory_cache(self.hass, options, flights)
+        # Warm directory cache on first run without blocking initial render.
+        self.hass.async_create_task(self._warm_directory_cache_safe(options, flights))
 
         # Filter by include_past_hours using departure local time (airport tz when available)
         def _as_tz(dt, tzname: str | None):
@@ -272,8 +294,6 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
                     continue
                 pruned.append(f)
             flights = pruned
-            if removed_manual:
-                return
             if next_prune and (not next_refresh or next_prune < next_refresh):
                 # Ensure we rebuild at the prune boundary even if status refresh is no longer scheduled.
                 next_refresh = next_prune
@@ -480,7 +500,7 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
         if next_refresh:
             @callback
             def _scheduled_refresh(_now) -> None:
-                self.hass.async_create_task(self._rebuild())
+                self.hass.async_create_task(self._run_rebuild_safe("scheduled_refresh"))
 
             self._next_refresh_unsub = async_track_point_in_utc_time(self.hass, _scheduled_refresh, next_refresh)
 
@@ -590,9 +610,9 @@ class FlightDashboardFr24UsageSensor(SensorEntity):
             self.async_write_ha_state()
             return
 
-        if is_blocked(self.hass, "flightradar24"):
-            until = get_block_until(self.hass, "flightradar24")
-            reason = get_block_reason(self.hass, "flightradar24")
+        if is_blocked(self.hass, "fr24"):
+            until = get_block_until(self.hass, "fr24")
+            reason = get_block_reason(self.hass, "fr24")
             self._attr_available = True
             self._usage = {
                 "blocked": True,
@@ -609,7 +629,7 @@ class FlightDashboardFr24UsageSensor(SensorEntity):
             data = await client.usage()
         except FR24RateLimitError as e:
             seconds = int(e.retry_after or 3600)
-            set_block(self.hass, "flightradar24", seconds, "rate_limited")
+            set_block(self.hass, "fr24", seconds, "rate_limited")
             self._attr_available = True
             self._usage = {
                 "blocked": True,
