@@ -46,6 +46,7 @@ CONF_AIRLABS_KEY = "airlabs_api_key"
 CONF_FLIGHTAPI_KEY = "flightapi_api_key"
 CONF_OPENSKY_USERNAME = "opensky_username"
 CONF_OPENSKY_PASSWORD = "opensky_password"
+CONF_DIRECTORY_SOURCE_MODE = "directory_source_mode"
 
 # NEW: Flightradar24 options
 CONF_FR24_API_KEY = "fr24_api_key"
@@ -84,6 +85,7 @@ DEFAULT_STOP_REFRESH_AFTER_ARRIVAL_MINUTES = 60
 
 DEFAULT_FR24_USE_SANDBOX = False
 DEFAULT_FR24_API_VERSION = "v1"
+DEFAULT_DIRECTORY_SOURCE_MODE = "inbuilt"
 
 
 class FlightDashboardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -127,6 +129,7 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
         status_provider = options.get(CONF_STATUS_PROVIDER, DEFAULT_STATUS_PROVIDER)
         position_provider = options.get(CONF_POSITION_PROVIDER, DEFAULT_POSITION_PROVIDER)
         schedule_provider = options.get(CONF_SCHEDULE_PROVIDER, DEFAULT_SCHEDULE_PROVIDER)
+        directory_source_mode = options.get(CONF_DIRECTORY_SOURCE_MODE, DEFAULT_DIRECTORY_SOURCE_MODE)
         min_poll = int(options.get(CONF_MIN_API_POLL_MINUTES, DEFAULT_MIN_API_POLL_MINUTES))
         grace = int(options.get(CONF_DELAY_GRACE_MINUTES, DEFAULT_DELAY_GRACE_MINUTES))
 
@@ -212,6 +215,16 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
                     selector.SelectOptionDict(value="opensky", label="OpenSky"),
                     selector.SelectOptionDict(value="airlabs", label="AirLabs"),
                     selector.SelectOptionDict(value="none", label="Disabled"),
+                ],
+                multiple=False,
+                mode=selector.SelectSelectorMode.DROPDOWN,
+            )
+        )
+        directory_source_selector = selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=[
+                    selector.SelectOptionDict(value="inbuilt", label="Inbuilt (OpenFlights/Airportsdata)"),
+                    selector.SelectOptionDict(value="provider", label="Provider-first (FlightAPI, fallback to inbuilt)"),
                 ],
                 multiple=False,
                 mode=selector.SelectSelectorMode.DROPDOWN,
@@ -320,6 +333,7 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
             vol.Required(CONF_SCHEDULE_PROVIDER, default=schedule_provider): schedule_selector,
             vol.Required(CONF_STATUS_PROVIDER, default=status_provider): status_selector,
             vol.Required(CONF_POSITION_PROVIDER, default=position_provider): position_selector,
+            vol.Required(CONF_DIRECTORY_SOURCE_MODE, default=directory_source_mode): directory_source_selector,
             vol.Required(CONF_ITINERARY_PROVIDERS, default=providers): itinerary_selector,
 
             # API keys
@@ -439,6 +453,7 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
             options[CONF_STATUS_PROVIDER] = user_input[CONF_STATUS_PROVIDER]
             options[CONF_POSITION_PROVIDER] = user_input.get(CONF_POSITION_PROVIDER, DEFAULT_POSITION_PROVIDER)
             options[CONF_SCHEDULE_PROVIDER] = user_input[CONF_SCHEDULE_PROVIDER]
+            options[CONF_DIRECTORY_SOURCE_MODE] = user_input.get(CONF_DIRECTORY_SOURCE_MODE, DEFAULT_DIRECTORY_SOURCE_MODE)
 
             # Polling schedule
             options[CONF_MIN_API_POLL_MINUTES] = max(5, int(user_input[CONF_MIN_API_POLL_MINUTES]))

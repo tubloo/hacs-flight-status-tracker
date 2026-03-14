@@ -9,7 +9,7 @@ Flight Status Tracker tracks upcoming flights in Home Assistant:
 - You add flights using minimal inputs (airline code, flight number, date).
 - You can preview a flight before saving it.
 - The integration keeps statuses updated with smart polling and rate limiting.
-- Airports/airlines are enriched internally using cached data files (no API keys required).
+- Airports/airlines can be enriched from inbuilt datasets or provider-first lookup (configurable).
 
 ## Key Entities
 
@@ -51,7 +51,9 @@ The integration separates providers by responsibility:
 - Schedule provider: used for preview/add to resolve airports and scheduled times.
 - Status provider: used for ongoing updates (status/times/optional gates/terminals).
 - Position provider: optional; used for live position. Disabled by default.
-- Directory enrichment: airport/airline enrichment is handled internally using data files (no API keys required).
+- Directory enrichment: airport/airline metadata can use:
+  - `inbuilt` (OpenFlights/Airportsdata), or
+  - `provider` (FlightAPI code lookup first, fallback to inbuilt).
 
 ## Options (Common)
 
@@ -69,6 +71,9 @@ These are configured in the integration Options UI (Settings > Devices & Service
 - Schedule provider: used for preview/add to find airports + scheduled times.
 - Status provider: used for ongoing status updates.
 - Position provider: optional; adds live position when supported.
+- Airline/Airport data source:
+  - `inbuilt`: use OpenFlights/Airportsdata cache only.
+  - `provider`: use FlightAPI code lookup first, then fallback to inbuilt.
 
 ### Auto-removal (cleanup)
 

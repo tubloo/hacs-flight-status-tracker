@@ -41,6 +41,7 @@ def _default_provider_stats() -> dict[str, Any]:
         "status": 0,
         "schedule": 0,
         "position": 0,
+        "directory": 0,
         "usage": 0,
         "other": 0,
         "success": 0,
@@ -174,7 +175,7 @@ def record_api_call(
     metrics["total_calls"] = int(metrics.get("total_calls") or 0) + 1
     stats["total"] = int(stats.get("total") or 0) + 1
 
-    if flow_key in ("status", "schedule", "position", "usage"):
+    if flow_key in ("status", "schedule", "position", "directory", "usage"):
         stats[flow_key] = int(stats.get(flow_key) or 0) + 1
     else:
         stats["other"] = int(stats.get("other") or 0) + 1

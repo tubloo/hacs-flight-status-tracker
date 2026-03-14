@@ -33,6 +33,7 @@
           "auto_remove_after_arrival_minutes": "Auto-remove flight (minutes after arrival)",
           "status_provider": "Status provider",
           "schedule_provider": "Schedule provider",
+          "directory_source_mode": "Airline/Airport data source",
           "min_api_poll_minutes": "Minimum API poll interval (minutes)",
           "delay_grace_minutes": "Delay grace (minutes)",
           "far_before_dep_threshold_hours": "Far-Future threshold (hours before departure)",
