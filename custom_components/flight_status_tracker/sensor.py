@@ -89,7 +89,74 @@ def _term_gate(terminal: Any, gate: Any) -> str:
     return ""
 
 
-def _build_ui_block(flight: dict[str, Any], now_utc) -> dict[str, Any]:
+def _as_utc_dt(val: datetime | None) -> datetime | None:
+    if val is None:
+        return None
+    if val.tzinfo:
+        return dt_util.as_utc(val)
+    return dt_util.as_utc(dt_util.as_local(val))
+
+
+def _best_dt_utc(flight: dict[str, Any], side: str, keys: list[str]) -> datetime | None:
+    block = flight.get(side) or {}
+    if not isinstance(block, dict):
+        return None
+    for k in keys:
+        dt = _parse_dt(block.get(k))
+        if dt:
+            return _as_utc_dt(dt)
+    return None
+
+
+def _segment_key_for_ui(flight: dict[str, Any], now_utc: datetime, options: dict[str, Any]) -> str:
+    def _opt_int(key: str, default: int) -> int:
+        try:
+            return int(options.get(key, default))
+        except Exception:
+            return default
+
+    far_thr_hours = max(0, _opt_int("far_before_dep_threshold_hours", 6))
+    dep_pre_minutes = max(0, _opt_int("dep_window_pre_minutes", 10))
+    dep_post_minutes = max(0, _opt_int("dep_window_post_minutes", 10))
+    arr_pre_minutes = max(0, _opt_int("arr_window_pre_minutes", 10))
+    arr_post_minutes = max(0, _opt_int("arr_window_post_minutes", 10))
+    stop_after_arr_minutes = max(0, _opt_int("stop_refresh_after_arrival_minutes", 60))
+
+    now_u = _as_utc_dt(now_utc) or now_utc
+    dep = _best_dt_utc(flight, "dep", ["actual", "estimated", "scheduled"])
+    arr = _best_dt_utc(flight, "arr", ["actual", "estimated", "scheduled"])
+
+    if dep:
+        dep_window_start = dep - timedelta(minutes=dep_pre_minutes)
+        dep_window_end = dep + timedelta(minutes=dep_post_minutes)
+        if dep_window_start <= now_u <= dep_window_end:
+            return "takeoff"
+
+    if arr:
+        arr_window_start = arr - timedelta(minutes=arr_pre_minutes)
+        arr_window_end = arr + timedelta(minutes=arr_post_minutes)
+        if arr_window_start <= now_u <= arr_window_end:
+            return "landing"
+
+    if dep and arr:
+        mid_start = dep + timedelta(minutes=dep_post_minutes)
+        mid_end = arr - timedelta(minutes=arr_pre_minutes)
+        if mid_start <= now_u <= mid_end:
+            return "mid_flight"
+
+    if dep and now_u < dep:
+        delta = dep - now_u
+        if delta > timedelta(hours=far_thr_hours):
+            return "far_future"
+        return "prepare_to_travel"
+
+    if arr and now_u <= arr + timedelta(minutes=stop_after_arr_minutes):
+        return "post_arrival"
+
+    return "unknown"
+
+
+def _build_ui_block(flight: dict[str, Any], now_utc, options: dict[str, Any]) -> dict[str, Any]:
     dep = flight.get("dep") or {}
     arr = flight.get("arr") or {}
     dep_air = dep.get("airport") or {}
@@ -124,12 +191,7 @@ def _build_ui_block(flight: dict[str, Any], now_utc) -> dict[str, Any]:
     is_delayed = delay_key == "delayed"
     is_on_time = delay_key in ("on_time", "early")
 
-    dep_state_dt = _parse_dt(dep.get("scheduled"))
-    within_6h = False
-    if dep_state_dt:
-        dep_state_utc = dt_util.as_utc(dep_state_dt) if dep_state_dt.tzinfo else dt_util.as_utc(dt_util.as_local(dep_state_dt))
-        delta = dep_state_utc - dt_util.as_utc(now_utc)
-        within_6h = timedelta(0) < delta <= timedelta(hours=6)
+    segment_key = _segment_key_for_ui(flight, now_utc, options)
 
     badge_key = "neutral"
     if state_label in ("Cancelled", "Diverted") or is_delayed:
@@ -140,7 +202,7 @@ def _build_ui_block(flight: dict[str, Any], now_utc) -> dict[str, Any]:
         badge_key = "ok"
     elif state_label == "Arrived" and is_delayed:
         badge_key = "critical"
-    elif state_label == "Scheduled" and is_on_time and within_6h:
+    elif state_label == "Scheduled" and segment_key in ("prepare_to_travel", "takeoff", "mid_flight", "landing"):
         badge_key = "ok"
 
     dep_label_raw = dep_air.get("city") or dep_air.get("name") or (dep_air.get("iata") or "—").upper()
@@ -208,6 +270,7 @@ def _build_ui_block(flight: dict[str, Any], now_utc) -> dict[str, Any]:
         "state_label": state_label,
         "route_state": route_state,
         "badge_key": badge_key,
+        "poll_segment_key": segment_key,
         "dep_code": (dep_air.get("iata") or "—").upper(),
         "arr_code": (arr_air.get("iata") or "—").upper(),
         "route_arr_code": route_arr_code,
@@ -760,7 +823,7 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
             ):
                 flight.pop(legacy, None)
 
-            flight["ui"] = _build_ui_block(flight, now)
+            flight["ui"] = _build_ui_block(flight, now, options)
 
         self._flights = flights
         self.async_write_ha_state()

@@ -32,8 +32,8 @@ cards:
           {%- set route_state = ui.route_state or state -%}
 
           {%- set badge = 'bg-gray-600 text-white' -%}
-          {%- set route_color = 'text-gray-400' -%}
-          {%- set time_color = 'text-gray-300' -%}
+          {%- set route_color = 'text-gray-600' -%}
+          {%- set time_color = 'text-gray-700' -%}
           {%- if badge_key == 'critical' -%}
             {%- set badge = 'bg-red-800 text-white' -%}
             {%- set route_color = 'text-red-700' -%}
