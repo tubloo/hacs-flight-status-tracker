@@ -647,29 +647,21 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
             airline_code = flight.get("airline_code")
             prev_airline = (prev or {}).get("airline_code")
             airline_changed = bool(prev_airline and airline_code and prev_airline != airline_code)
-            needs_airline = bool(
-                airline_code
-                and (
-                    airline_changed
-                    or not flight.get("airline_name")
-                    or not flight.get("airline_logo_url")
-                )
-            )
+            updates: dict[str, Any] = {}
+            needs_airline = bool(airline_code)
             if needs_airline:
                 airline = await get_airline(self.hass, options, airline_code)
                 if airline:
-                    if airline_changed and airline.get("name"):
-                        flight["airline_name"] = airline.get("name")
-                    elif not flight.get("airline_name"):
-                        flight["airline_name"] = airline.get("name") or flight.get("airline_name")
+                    resolved_name = airline.get("name")
+                    if resolved_name and (airline_changed or flight.get("airline_name") != resolved_name):
+                        flight["airline_name"] = resolved_name
+                        updates["airline_name"] = resolved_name
 
                     logo = airline.get("logo_url") or airline.get("logo")
-                    if airline_changed and logo:
+                    if logo and (airline_changed or not flight.get("airline_logo_url") or flight.get("airline_logo_url") != logo):
                         flight["airline_logo_url"] = logo
-                    elif not flight.get("airline_logo_url") and logo:
-                        flight["airline_logo_url"] = logo
+                        updates["airline_logo_url"] = logo
 
-            updates: dict[str, Any] = {}
             dep_iata = dep_air.get("iata")
             arr_iata = arr_air.get("iata")
             prev_dep_iata = (prev or {}).get("dep_iata")

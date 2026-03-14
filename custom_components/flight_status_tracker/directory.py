@@ -42,6 +42,8 @@ _LOGGER = logging.getLogger(__name__)
 _CACHE_TTL_DAYS = 30
 _META_AIRPORTSDATA_FETCHED_AT = "airportsdata_fetched_at"
 _META_OPENFLIGHTS_AIRLINES_FETCHED_AT = "openflights_airlines_fetched_at"
+_META_OPENFLIGHTS_AIRLINES_SCHEMA_VERSION = "openflights_airlines_schema_version"
+_OPENFLIGHTS_AIRLINES_SCHEMA_VERSION = 2
 
 def airline_logo_url(iata: str | None) -> str | None:
     """Return a lightweight logo URL for airline IATA code."""
@@ -130,7 +132,8 @@ async def _ensure_openflights_airlines_cache_forceable(hass: HomeAssistant, ttl_
     airlines = cache.get("airlines") or {}
     fetched_at = meta.get(_META_OPENFLIGHTS_AIRLINES_FETCHED_AT)
     dt = _parse_dt(fetched_at) if isinstance(fetched_at, str) else None
-    if not force and dt and airlines:
+    schema_version = int(meta.get(_META_OPENFLIGHTS_AIRLINES_SCHEMA_VERSION, 0) or 0)
+    if not force and dt and airlines and schema_version >= _OPENFLIGHTS_AIRLINES_SCHEMA_VERSION:
         age = datetime.now(timezone.utc) - dt.astimezone(timezone.utc)
         if age.total_seconds() <= ttl_days * 86400:
             return
@@ -180,6 +183,7 @@ async def _ensure_openflights_airlines_cache_forceable(hass: HomeAssistant, ttl_
 
     cache["airlines"] = index
     meta[_META_OPENFLIGHTS_AIRLINES_FETCHED_AT] = now_iso
+    meta[_META_OPENFLIGHTS_AIRLINES_SCHEMA_VERSION] = _OPENFLIGHTS_AIRLINES_SCHEMA_VERSION
     await async_save_cache(hass, cache)
 
 
