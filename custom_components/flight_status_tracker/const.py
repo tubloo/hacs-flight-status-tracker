@@ -18,6 +18,7 @@ SCHEMA_VERSION = 3
 SIGNAL_MANUAL_FLIGHTS_UPDATED = "flight_status_tracker_manual_flights_updated"
 SIGNAL_PREVIEW_UPDATED = "flight_status_tracker_preview_updated"
 SIGNAL_OPTIONS_UPDATED = "flight_status_tracker_options_updated"
+SIGNAL_API_METRICS_UPDATED = "flight_status_tracker_api_metrics_updated"
 
 # --- Events (optional; safe if unused) ---
 EVENT_UPDATED = "flight_status_tracker_updated"

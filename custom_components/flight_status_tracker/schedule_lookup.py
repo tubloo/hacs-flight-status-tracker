@@ -23,6 +23,7 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from .rate_limit import is_blocked, set_block
 from .status_resolver import _normalize_status_state
+from .api_metrics import record_api_call
 
 # We read options from the integration options dict that you already store
 DOMAIN = "flight_status_tracker"
@@ -38,6 +39,15 @@ CONF_FR24_SANDBOX_KEY = "fr24_sandbox_key"
 CONF_FR24_USE_SANDBOX = "fr24_use_sandbox"
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _outcome_from_error(err: Any) -> str:
+    e = str(err or "").strip().lower()
+    if not e:
+        return "success"
+    if e in {"rate_limited", "quota_exceeded", "timeout", "network", "auth_error"}:
+        return e
+    return "error"
 
 def _parse_query(query: str) -> tuple[str | None, str | None]:
     """Return (airline_code, flight_number). Accept 'AI 157', 'AI157', 'AF-2'."""
@@ -220,6 +230,10 @@ async def lookup_schedule(
             }
             _LOGGER.debug("FR24 schedule lookup for %s %s on %s", airline_code, flight_number, date_str)
             st = await statusp.async_get_status(flight_shell)
+            if isinstance(st, dict):
+                record_api_call(hass, "flightradar24", flow="schedule", outcome=_outcome_from_error(st.get("error")))
+            else:
+                record_api_call(hass, "flightradar24", flow="schedule", outcome="success")
             if isinstance(st, dict) and st.get("error") in ("rate_limited", "quota_exceeded"):
                 reason = st.get("error")
                 block_for = st.get("retry_after") or (24 * 60 * 60 if reason == "quota_exceeded" else 900)
@@ -290,6 +304,12 @@ async def lookup_schedule(
                 {"airline_code": airline_code, "flight_number": flight_number, "scheduled_departure": f"{date_str}T00:00:00+00:00"}
             )
             details = st.details if st else None
+            record_api_call(
+                hass,
+                "aviationstack",
+                flow="schedule",
+                outcome=_outcome_from_error(details.get("error") if isinstance(details, dict) else None),
+            )
             if isinstance(details, dict) and not details.get("error"):
                 dep_sched = details.get("dep_scheduled")
                 arr_sched = details.get("arr_scheduled")
@@ -351,6 +371,12 @@ async def lookup_schedule(
                 {"airline_code": airline_code, "flight_number": flight_number, "scheduled_departure": f"{date_str}T00:00:00+00:00"}
             )
             details = st.details if st else None
+            record_api_call(
+                hass,
+                "airlabs",
+                flow="schedule",
+                outcome=_outcome_from_error(details.get("error") if isinstance(details, dict) else None),
+            )
             if isinstance(details, dict) and not details.get("error"):
                 dep_sched = details.get("dep_scheduled")
                 arr_sched = details.get("arr_scheduled")
@@ -425,6 +451,12 @@ async def lookup_schedule(
                 }
             )
             details = st.details if st else None
+            record_api_call(
+                hass,
+                "flightapi",
+                flow="schedule",
+                outcome=_outcome_from_error(details.get("error") if isinstance(details, dict) else None),
+            )
             if isinstance(details, dict) and not details.get("error"):
                 dep_sched = details.get("dep_scheduled")
                 arr_sched = details.get("arr_scheduled")

@@ -126,6 +126,23 @@ The integration aims to reduce provider calls:
 
 Exact refresh intervals depend on your configured polling schedule and minimum API poll interval.
 
+## API Call Metrics
+
+The integration exposes a diagnostic sensor:
+
+- `sensor.flight_status_tracker_api_calls`
+
+Sensor state:
+
+- Total provider API calls recorded by the integration (monotonic counter).
+
+Key attributes:
+
+- `by_provider`: compact totals per provider.
+- `providers`: detailed per-provider counters split by flow (`status`, `schedule`, `position`, `usage`) and outcomes (`success`, `rate_limited`, `quota_exceeded`, etc.).
+
+This gives a single, consistent attribute model across providers for dashboard cards and helper/template sensors.
+
 ## Upgrade Notes
 
 ### v0.3.0

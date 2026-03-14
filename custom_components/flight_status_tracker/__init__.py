@@ -23,10 +23,12 @@ from .const import (
 from .services import async_register_services
 from .services_preview import async_register_preview_services
 from .directory import async_refresh_builtin_airports_cache, async_refresh_builtin_airlines_cache
+from .api_metrics import async_init_api_metrics, async_flush_api_metrics
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Flight Status Tracker from a config entry."""
+    await async_init_api_metrics(hass)
 
     # Options provider callable (used by services to read API keys etc.)
     def _options_provider():
@@ -72,6 +74,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Remove domain services when no config entry for this integration remains.
     if not hass.config_entries.async_entries(DOMAIN):
+        await async_flush_api_metrics(hass)
         for service in (
             SERVICE_ADD_MANUAL_FLIGHT,
             SERVICE_REMOVE_MANUAL_FLIGHT,

@@ -16,7 +16,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.event import async_track_point_in_utc_time, async_track_time_interval, async_track_state_change_event
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, SIGNAL_MANUAL_FLIGHTS_UPDATED, EVENT_UPDATED
+from .const import DOMAIN, SIGNAL_MANUAL_FLIGHTS_UPDATED, SIGNAL_API_METRICS_UPDATED, EVENT_UPDATED
 from .coordinator_agg import merge_segments
 from .providers.manual.itinerary import ManualItineraryProvider
 from .manual_store import async_remove_manual_flight, async_update_manual_flight
@@ -27,6 +27,7 @@ from .directory import get_airport, get_airline, warm_directory_cache
 from .providers.flightradar24.client import FR24Client, FR24RateLimitError, FR24Error
 from .rate_limit import get_blocks, is_blocked, get_block_until, get_block_reason, set_block
 from .selected import get_selected_flight, get_flight_position
+from .api_metrics import get_api_metrics_snapshot, record_api_call
 
 
 SCHEMA_VERSION = 3
@@ -297,6 +298,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities) -> N
     entities = [
         upcoming,
         FlightDashboardSelectedFlightSensor(hass, entry),
+        FlightDashboardApiMetricsSensor(hass, entry),
         FlightDashboardFr24UsageSensor(hass, entry),
         FlightDashboardProviderBlockSensor(hass, entry),
     ]
@@ -835,6 +837,56 @@ class FlightDashboardSelectedFlightSensor(SensorEntity):
         self.async_write_ha_state()
 
 
+class FlightDashboardApiMetricsSensor(SensorEntity):
+    _attr_name = "Flight Status Tracker API Calls"
+    _attr_icon = "mdi:api"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_should_poll = False
+    _attr_native_unit_of_measurement = "calls"
+
+    def __init__(self, hass: HomeAssistant, entry) -> None:
+        self.hass = hass
+        self.entry = entry
+        self._attr_unique_id = f"{DOMAIN}_api_calls"
+        self._unsub: Callable[[], None] | None = None
+        self._attrs: dict[str, Any] = {}
+
+    async def async_added_to_hass(self) -> None:
+        @callback
+        def _kick() -> None:
+            self._refresh()
+
+        self._unsub = async_dispatcher_connect(self.hass, SIGNAL_API_METRICS_UPDATED, _kick)
+        self._refresh()
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._unsub:
+            self._unsub()
+            self._unsub = None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return self._attrs
+
+    def _refresh(self) -> None:
+        snapshot = get_api_metrics_snapshot(self.hass)
+        providers = snapshot.get("providers") if isinstance(snapshot, dict) else {}
+        per_provider_totals: dict[str, int] = {}
+        if isinstance(providers, dict):
+            for provider, stats in providers.items():
+                if isinstance(stats, dict):
+                    per_provider_totals[provider] = int(stats.get("total") or 0)
+
+        self._attr_native_value = int(snapshot.get("total_calls") or 0) if isinstance(snapshot, dict) else 0
+        self._attrs = {
+            "updated_at": snapshot.get("updated_at") if isinstance(snapshot, dict) else None,
+            "by_provider": per_provider_totals,
+            "providers": providers if isinstance(providers, dict) else {},
+        }
+        self._attr_available = True
+        self.async_write_ha_state()
+
+
 class FlightDashboardFr24UsageSensor(SensorEntity):
     _attr_name = "Flight Status Tracker FR24 Usage"
     _attr_icon = "mdi:chart-box"
@@ -898,7 +950,9 @@ class FlightDashboardFr24UsageSensor(SensorEntity):
         client = FR24Client(self.hass, key, use_sandbox=use_sandbox, api_version=api_version)
         try:
             data = await client.usage()
+            record_api_call(self.hass, "flightradar24", flow="usage", outcome="success")
         except FR24RateLimitError as e:
+            record_api_call(self.hass, "flightradar24", flow="usage", outcome="rate_limited")
             seconds = int(e.retry_after or 3600)
             set_block(self.hass, "fr24", seconds, "rate_limited")
             self._attr_available = True
@@ -912,11 +966,13 @@ class FlightDashboardFr24UsageSensor(SensorEntity):
             self.async_write_ha_state()
             return
         except FR24Error as e:
+            record_api_call(self.hass, "flightradar24", flow="usage", outcome="error")
             self._attr_available = False
             self._usage = {"error": str(e), "sandbox": use_sandbox}
             self.async_write_ha_state()
             return
         except Exception as e:
+            record_api_call(self.hass, "flightradar24", flow="usage", outcome="error")
             self._attr_available = False
             self._usage = {"error": str(e), "sandbox": use_sandbox}
             self.async_write_ha_state()

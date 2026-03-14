@@ -8,6 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
 from .rate_limit import is_blocked, set_block
+from .api_metrics import record_api_call
 
 
 def _unwrap_status(res: Any) -> dict[str, Any] | None:
@@ -50,6 +51,17 @@ def _parse_dt(val: Any) -> datetime | None:
     return None
 
 
+def _outcome_from_payload(out: dict[str, Any] | None) -> str:
+    if not isinstance(out, dict):
+        return "unknown"
+    err = str(out.get("error") or "").strip().lower()
+    if not err:
+        return "success"
+    if err in {"rate_limited", "quota_exceeded", "timeout", "network", "auth_error"}:
+        return err
+    return "error"
+
+
 async def async_fetch_status(
     hass: HomeAssistant,
     options: dict[str, Any],
@@ -80,6 +92,7 @@ async def async_fetch_status(
             hass, api_key=fr24_active_key, use_sandbox=use_sandbox, api_version=fr24_version
         ).async_get_status(flight)
         out = _unwrap_status(res)
+        record_api_call(hass, "flightradar24", flow="status", outcome=_outcome_from_payload(out))
         if isinstance(out, dict) and out.get("error") in ("rate_limited", "quota_exceeded"):
             reason = out.get("error")
             block_for = out.get("retry_after") or (24 * 60 * 60 if reason == "quota_exceeded" else 900)
@@ -94,6 +107,7 @@ async def async_fetch_status(
 
         res = await AviationstackStatusProvider(hass, av_key).async_get_status(flight)
         out = _unwrap_status(res)
+        record_api_call(hass, "aviationstack", flow="status", outcome=_outcome_from_payload(out))
         if isinstance(out, dict) and out.get("error") in ("rate_limited", "quota_exceeded"):
             reason = out.get("error")
             block_for = out.get("retry_after") or (24 * 60 * 60 if reason == "quota_exceeded" else 900)
@@ -108,6 +122,7 @@ async def async_fetch_status(
 
         res = await AirLabsStatusProvider(hass, al_key).async_get_status(flight)
         out = _unwrap_status(res)
+        record_api_call(hass, "airlabs", flow="status", outcome=_outcome_from_payload(out))
         if isinstance(out, dict) and out.get("error") in ("rate_limited", "quota_exceeded"):
             reason = out.get("error")
             block_for = out.get("retry_after") or (24 * 60 * 60 if reason == "quota_exceeded" else 900)
@@ -122,6 +137,7 @@ async def async_fetch_status(
 
         res = await FlightAPIStatusProvider(hass, fa_key).async_get_status(flight)
         out = _unwrap_status(res)
+        record_api_call(hass, "flightapi", flow="status", outcome=_outcome_from_payload(out))
         if isinstance(out, dict) and out.get("error") in ("rate_limited", "quota_exceeded"):
             reason = out.get("error")
             block_for = out.get("retry_after") or (24 * 60 * 60 if reason == "quota_exceeded" else 900)
@@ -134,7 +150,9 @@ async def async_fetch_status(
         from .providers.opensky.status import OpenSkyEnrichmentProvider
 
         res = await OpenSkyEnrichmentProvider(hass).async_get_status(flight)
-        return _unwrap_status(res)
+        out = _unwrap_status(res)
+        record_api_call(hass, "opensky", flow="status", outcome=_outcome_from_payload(out))
+        return out
 
     if provider == "local":
         from .providers.local.status import LocalStatusProvider
@@ -171,6 +189,7 @@ async def async_fetch_status(
             hass, api_key=fr24_active_key, use_sandbox=use_sandbox, api_version=fr24_version
         ).async_get_status(flight)
         out = _unwrap_status(res)
+        record_api_call(hass, "flightradar24", flow="status", outcome=_outcome_from_payload(out))
         if isinstance(out, dict) and out.get("error") in ("rate_limited", "quota_exceeded"):
             reason = out.get("error")
             block_for = out.get("retry_after") or (24 * 60 * 60 if reason == "quota_exceeded" else 900)
@@ -184,6 +203,7 @@ async def async_fetch_status(
 
         res = await AviationstackStatusProvider(hass, av_key).async_get_status(flight)
         out = _unwrap_status(res)
+        record_api_call(hass, "aviationstack", flow="status", outcome=_outcome_from_payload(out))
         if isinstance(out, dict) and out.get("error") in ("rate_limited", "quota_exceeded"):
             reason = out.get("error")
             block_for = out.get("retry_after") or (24 * 60 * 60 if reason == "quota_exceeded" else 900)
@@ -197,6 +217,7 @@ async def async_fetch_status(
 
         res = await AirLabsStatusProvider(hass, al_key).async_get_status(flight)
         out = _unwrap_status(res)
+        record_api_call(hass, "airlabs", flow="status", outcome=_outcome_from_payload(out))
         if isinstance(out, dict) and out.get("error") in ("rate_limited", "quota_exceeded"):
             reason = out.get("error")
             block_for = out.get("retry_after") or (24 * 60 * 60 if reason == "quota_exceeded" else 900)
@@ -211,6 +232,7 @@ async def async_fetch_status(
 
         res = await FlightAPIStatusProvider(hass, fa_key).async_get_status(flight)
         out = _unwrap_status(res)
+        record_api_call(hass, "flightapi", flow="status", outcome=_outcome_from_payload(out))
         if isinstance(out, dict) and out.get("error") in ("rate_limited", "quota_exceeded"):
             reason = out.get("error")
             block_for = out.get("retry_after") or (24 * 60 * 60 if reason == "quota_exceeded" else 900)
@@ -248,6 +270,7 @@ async def async_fetch_position(
             hass, api_key=fr24_active_key, use_sandbox=use_sandbox, api_version=fr24_version
         ).async_get_status(flight)
         out = _unwrap_status(res)
+        record_api_call(hass, "flightradar24", flow="position", outcome=_outcome_from_payload(out))
         if isinstance(out, dict) and out.get("error") in ("rate_limited", "quota_exceeded"):
             reason = out.get("error")
             block_for = out.get("retry_after") or (24 * 60 * 60 if reason == "quota_exceeded" else 900)
@@ -262,6 +285,7 @@ async def async_fetch_position(
 
         res = await AirLabsStatusProvider(hass, al_key).async_get_status(flight)
         out = _unwrap_status(res)
+        record_api_call(hass, "airlabs", flow="position", outcome=_outcome_from_payload(out))
         if isinstance(out, dict) and out.get("error") in ("rate_limited", "quota_exceeded"):
             reason = out.get("error")
             block_for = out.get("retry_after") or (24 * 60 * 60 if reason == "quota_exceeded" else 900)
@@ -274,6 +298,7 @@ async def async_fetch_position(
 
         res = await OpenSkyEnrichmentProvider(hass).async_get_status(flight)
         out = _unwrap_status(res)
+        record_api_call(hass, "opensky", flow="position", outcome=_outcome_from_payload(out))
         return _extract_position(out, provider)
 
     if provider == "aviationstack" and av_key:
@@ -283,6 +308,7 @@ async def async_fetch_position(
 
         res = await AviationstackStatusProvider(hass, av_key).async_get_status(flight)
         out = _unwrap_status(res)
+        record_api_call(hass, "aviationstack", flow="position", outcome=_outcome_from_payload(out))
         if isinstance(out, dict) and out.get("error") in ("rate_limited", "quota_exceeded"):
             reason = out.get("error")
             block_for = out.get("retry_after") or (24 * 60 * 60 if reason == "quota_exceeded" else 900)
