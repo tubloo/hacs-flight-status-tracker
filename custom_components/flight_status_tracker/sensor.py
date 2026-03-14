@@ -38,6 +38,208 @@ def _dir_enrich_state(hass: HomeAssistant) -> dict[str, dict[str, Any]]:
     """In-memory guard to avoid repeated directory lookups for unchanged identifiers."""
     return hass.data.setdefault(DOMAIN, {}).setdefault(_DIR_ENRICH_STATE_KEY, {})
 
+
+def _parse_dt(val: Any):
+    if not isinstance(val, str):
+        return None
+    return dt_util.parse_datetime(val)
+
+
+def _format_hm_local(ts: Any, tzname: str | None) -> tuple[Any | None, str | None]:
+    if not isinstance(ts, str):
+        return None, None
+    dt = dt_util.parse_datetime(ts)
+    if not dt:
+        return None, None
+    if not dt.tzinfo:
+        dt = dt.replace(tzinfo=dt_util.UTC)
+    if tzname:
+        try:
+            dt = dt.astimezone(ZoneInfo(tzname))
+        except Exception:
+            pass
+    return dt, dt.strftime("%H:%M")
+
+
+def _status_label(raw_state: Any) -> str:
+    raw = str(raw_state or "unknown").strip().lower()
+    if raw in ("active", "en route", "en-route", "enroute"):
+        return "En Route"
+    if raw == "arrived":
+        return "Arrived"
+    if raw == "cancelled":
+        return "Cancelled"
+    if raw == "diverted":
+        return "Diverted"
+    if raw == "unknown":
+        return "Unknown"
+    return raw.title() if raw else "Unknown"
+
+
+def _term_gate(terminal: Any, gate: Any) -> str:
+    term = str(terminal or "").strip()
+    g = str(gate or "").strip()
+    if term and g:
+        return f"Terminal {term} · Gate {g}"
+    if term:
+        return f"Terminal {term}"
+    if g:
+        return f"Gate {g}"
+    return ""
+
+
+def _build_ui_block(flight: dict[str, Any], now_utc) -> dict[str, Any]:
+    dep = flight.get("dep") or {}
+    arr = flight.get("arr") or {}
+    dep_air = dep.get("airport") or {}
+    arr_air = arr.get("airport") or {}
+
+    dep_tz = dep_air.get("tz")
+    arr_tz = arr_air.get("tz")
+    dep_tz_short = dep_air.get("tz_short") or ""
+    arr_tz_short = arr_air.get("tz_short") or ""
+    viewer_tz_short = dt_util.as_local(now_utc).strftime("%Z")
+
+    dep_sched_dt, dep_sched = _format_hm_local(dep.get("scheduled"), dep_tz)
+    dep_est_dt, dep_est = _format_hm_local(dep.get("estimated"), dep_tz)
+    dep_act_dt, dep_act = _format_hm_local(dep.get("actual"), dep_tz)
+    arr_sched_dt, arr_sched = _format_hm_local(arr.get("scheduled"), arr_tz)
+    arr_est_dt, arr_est = _format_hm_local(arr.get("estimated"), arr_tz)
+    arr_act_dt, arr_act = _format_hm_local(arr.get("actual"), arr_tz)
+
+    dep_primary = dep_act or dep_est or dep_sched
+    arr_primary = arr_act or arr_est or arr_sched
+    dep_changed = bool(dep_primary and dep_sched and dep_primary != dep_sched)
+    arr_changed = bool(arr_primary and arr_sched and arr_primary != arr_sched)
+
+    raw_state = (flight.get("status_state") or "unknown")
+    state_label = _status_label(raw_state)
+    route_state = "Scheduled" if str(raw_state).strip().lower() == "unknown" else state_label
+
+    delay_key = (
+        flight.get("delay_status_key")
+        or str(flight.get("delay_status") or "unknown").lower().replace(" ", "_")
+    )
+    is_delayed = delay_key == "delayed"
+    is_on_time = delay_key in ("on_time", "early")
+
+    dep_state_dt = _parse_dt(dep.get("scheduled"))
+    within_6h = False
+    if dep_state_dt:
+        dep_state_utc = dt_util.as_utc(dep_state_dt) if dep_state_dt.tzinfo else dt_util.as_utc(dt_util.as_local(dep_state_dt))
+        delta = dep_state_utc - dt_util.as_utc(now_utc)
+        within_6h = timedelta(0) < delta <= timedelta(hours=6)
+
+    badge_key = "neutral"
+    if state_label in ("Cancelled", "Diverted") or is_delayed:
+        badge_key = "critical"
+    elif state_label == "En Route":
+        badge_key = "ok"
+    elif state_label == "Arrived" and is_on_time:
+        badge_key = "ok"
+    elif state_label == "Arrived" and is_delayed:
+        badge_key = "critical"
+    elif state_label == "Scheduled" and is_on_time and within_6h:
+        badge_key = "ok"
+
+    dep_label_raw = dep_air.get("city") or dep_air.get("name") or (dep_air.get("iata") or "—").upper()
+    arr_label_raw = arr_air.get("city") or arr_air.get("name") or (arr_air.get("iata") or "—").upper()
+    dep_label = str(dep_label_raw).title()
+    arr_label = str(arr_label_raw).title()
+    dep_date = dep_sched_dt.strftime("%d %b (%a)") if dep_sched_dt else "—"
+    arr_date = arr_sched_dt.strftime("%d %b (%a)") if arr_sched_dt else "—"
+
+    dep_viewer = None
+    arr_viewer = None
+    dep_dt_utc = _parse_dt(dep.get("actual") or dep.get("estimated") or dep.get("scheduled"))
+    arr_dt_utc = _parse_dt(arr.get("actual") or arr.get("estimated") or arr.get("scheduled"))
+    if dep_dt_utc:
+        d = dt_util.as_local(dep_dt_utc if dep_dt_utc.tzinfo else dep_dt_utc.replace(tzinfo=dt_util.UTC))
+        dep_viewer = d.strftime("%H:%M")
+    if arr_dt_utc:
+        d = dt_util.as_local(arr_dt_utc if arr_dt_utc.tzinfo else arr_dt_utc.replace(tzinfo=dt_util.UTC))
+        arr_viewer = d.strftime("%H:%M")
+    show_dep_viewer = bool(dep_viewer and dep_tz_short != viewer_tz_short and dep_viewer != dep_primary)
+    show_arr_viewer = bool(arr_viewer and arr_tz_short != viewer_tz_short and arr_viewer != arr_primary)
+    show_viewer_row = not (dep_tz_short == viewer_tz_short and arr_tz_short == viewer_tz_short)
+
+    dep_term_gate = _term_gate(dep.get("terminal"), dep.get("gate"))
+    arr_term_gate = _term_gate(arr.get("terminal"), arr.get("gate"))
+    show_term_gate_row = bool(dep_term_gate or arr_term_gate)
+
+    diverted_air = flight.get("diverted_to_airport") or {}
+    diverted_iata = (flight.get("diverted_to_iata") or diverted_air.get("iata") or "").strip().upper()
+    has_diverted = state_label == "Diverted" and bool(diverted_iata)
+    route_arr_code = diverted_iata if has_diverted else (arr_air.get("iata") or "—").upper()
+
+    progress_start_ts = dep.get("actual") or dep.get("estimated") or dep.get("scheduled")
+    progress_end_ts = arr.get("actual") or arr.get("estimated") or arr.get("scheduled")
+    arr_target_ts = progress_end_ts
+
+    progress_pct = 0
+    if dep_dt_utc and arr_dt_utc:
+        dep_u = dt_util.as_utc(dep_dt_utc) if dep_dt_utc.tzinfo else dt_util.as_utc(dt_util.as_local(dep_dt_utc))
+        arr_u = dt_util.as_utc(arr_dt_utc) if arr_dt_utc.tzinfo else dt_util.as_utc(dt_util.as_local(arr_dt_utc))
+        total = (arr_u - dep_u).total_seconds()
+        elapsed = (dt_util.as_utc(now_utc) - dep_u).total_seconds()
+        if total > 0:
+            progress_pct = int(max(0, min(100, round((elapsed / total) * 100))))
+
+    if route_state == "En Route":
+        plane_x = 6 if progress_pct < 6 else (94 if progress_pct > 94 else progress_pct)
+    elif route_state == "Arrived":
+        plane_x = 100
+    else:
+        plane_x = 2
+
+    updated = _parse_dt(flight.get("status_updated_at"))
+    updated_ago_min = None
+    updated_abs = None
+    if updated:
+        upd = dt_util.as_utc(updated) if updated.tzinfo else dt_util.as_utc(dt_util.as_local(updated))
+        updated_ago_min = int(max(0, round((dt_util.as_utc(now_utc) - upd).total_seconds() / 60)))
+        updated_abs = dt_util.as_local(upd).strftime("%Y-%m-%d %H:%M:%S %Z")
+
+    status = flight.get("status") if isinstance(flight.get("status"), dict) else {}
+    status_error_text = status.get("error_message") or status.get("error")
+
+    return {
+        "state_label": state_label,
+        "route_state": route_state,
+        "badge_key": badge_key,
+        "dep_code": (dep_air.get("iata") or "—").upper(),
+        "arr_code": (arr_air.get("iata") or "—").upper(),
+        "route_arr_code": route_arr_code,
+        "dep_label_line": f"{dep_label} · {dep_date}",
+        "arr_label_line": f"{arr_label} · {arr_date}",
+        "dep_time_primary": dep_primary,
+        "arr_time_primary": arr_primary,
+        "dep_time_strike": dep_sched if dep_changed else None,
+        "arr_time_strike": arr_sched if arr_changed else None,
+        "dep_changed": dep_changed,
+        "arr_changed": arr_changed,
+        "dep_tz_short": dep_tz_short,
+        "arr_tz_short": arr_tz_short,
+        "viewer_tz_short": viewer_tz_short,
+        "dep_viewer_time": dep_viewer,
+        "arr_viewer_time": arr_viewer,
+        "show_dep_viewer": show_dep_viewer,
+        "show_arr_viewer": show_arr_viewer,
+        "show_viewer_row": show_viewer_row,
+        "dep_term_gate": dep_term_gate,
+        "arr_term_gate": arr_term_gate,
+        "show_term_gate_row": show_term_gate_row,
+        "route_progress_at_poll_pct": progress_pct,
+        "plane_x_at_poll_pct": plane_x,
+        "progress_start_ts": progress_start_ts,
+        "progress_end_ts": progress_end_ts,
+        "arr_target_ts": arr_target_ts,
+        "status_error_text": status_error_text,
+        "updated_ago_min": updated_ago_min,
+        "updated_abs": updated_abs,
+        "source": status.get("provider") or "—",
+    }
+
 SCHEMA_DOC = """\
 Flight Status Tracker schema (v3)
 
@@ -84,6 +286,10 @@ CONF_FR24_API_VERSION = "fr24_api_version"
 
 FR24_USAGE_REFRESH = timedelta(minutes=30)
 PROVIDER_BLOCK_REFRESH = timedelta(minutes=1)
+WATCHDOG_CHECK_INTERVAL = timedelta(minutes=2)
+WATCHDOG_STALE_REBUILD = timedelta(minutes=15)
+WATCHDOG_OVERDUE_GRACE = timedelta(minutes=3)
+WATCHDOG_KICK_DEBOUNCE = timedelta(minutes=5)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities) -> None:
@@ -115,6 +321,12 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
         self._flights: list[dict[str, Any]] = []
         self._unsub: Callable[[], None] | None = None
         self._next_refresh_unsub: Callable[[], None] | None = None
+        self._watchdog_unsub: Callable[[], None] | None = None
+        self._last_rebuild_at: datetime | None = None
+        self._next_refresh_at: datetime | None = None
+        self._last_rebuild_error: str | None = None
+        self._watchdog_last_check_at: datetime | None = None
+        self._watchdog_last_kick_at: datetime | None = None
 
     async def async_added_to_hass(self) -> None:
         # Rebuild whenever manual flights are updated
@@ -123,6 +335,12 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
             self.hass.async_create_task(self._run_rebuild_safe("manual_update"))
 
         self._unsub = async_dispatcher_connect(self.hass, SIGNAL_MANUAL_FLIGHTS_UPDATED, _on_manual_updated)
+
+        @callback
+        def _watchdog_tick(_now) -> None:
+            self.hass.async_create_task(self._watchdog_check())
+
+        self._watchdog_unsub = async_track_time_interval(self.hass, _watchdog_tick, WATCHDOG_CHECK_INTERVAL)
 
         # Rebuild now
         await self._run_rebuild_safe("startup")
@@ -134,6 +352,9 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
         if self._next_refresh_unsub:
             self._next_refresh_unsub()
             self._next_refresh_unsub = None
+        if self._watchdog_unsub:
+            self._watchdog_unsub()
+            self._watchdog_unsub = None
         sensors = self.hass.data.get(DOMAIN, {}).get("upcoming_sensors") or {}
         if isinstance(sensors, dict):
             sensors.pop(self.entry.entry_id, None)
@@ -150,23 +371,68 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
             "schema_doc": SCHEMA_DOC,
             "schema_example": SCHEMA_EXAMPLE,
             "flights": self._flights,
+            "last_rebuild_at": self._last_rebuild_at.isoformat() if self._last_rebuild_at else None,
+            "next_refresh_at": self._next_refresh_at.isoformat() if self._next_refresh_at else None,
+            "last_rebuild_error": self._last_rebuild_error,
+            "watchdog_last_check_at": self._watchdog_last_check_at.isoformat() if self._watchdog_last_check_at else None,
+            "watchdog_last_kick_at": self._watchdog_last_kick_at.isoformat() if self._watchdog_last_kick_at else None,
         }
 
     async def _run_rebuild_safe(self, reason: str) -> None:
         """Run rebuild and ensure we always retry after an unexpected failure."""
         try:
             await self._rebuild()
+            self._last_rebuild_at = dt_util.utcnow()
+            self._last_rebuild_error = None
         except Exception:
+            self._last_rebuild_error = f"rebuild_failed:{reason}"
             _LOGGER.exception("Flight list rebuild failed (%s)", reason)
             if self._next_refresh_unsub:
                 return
             retry_at = dt_util.utcnow() + timedelta(minutes=5)
+            self._next_refresh_at = retry_at
 
             @callback
             def _retry(_now) -> None:
                 self.hass.async_create_task(self._run_rebuild_safe("retry_after_error"))
 
             self._next_refresh_unsub = async_track_point_in_utc_time(self.hass, _retry, retry_at)
+
+    async def _watchdog_check(self) -> None:
+        self._watchdog_last_check_at = dt_util.utcnow()
+        now = dt_util.utcnow()
+        if not self._flights:
+            return
+
+        active = False
+        for f in self._flights:
+            if not isinstance(f, dict):
+                continue
+            state = (f.get("status_state") or "").strip().lower()
+            if state not in ("arrived", "cancelled", "canceled", "landed"):
+                active = True
+                break
+        if not active:
+            return
+
+        stalled = False
+        if self._next_refresh_at is not None and now > (self._next_refresh_at + WATCHDOG_OVERDUE_GRACE):
+            stalled = True
+        elif self._next_refresh_at is not None and self._next_refresh_unsub is None:
+            stalled = True
+        elif self._last_rebuild_at is None:
+            stalled = True
+        elif now - self._last_rebuild_at > WATCHDOG_STALE_REBUILD:
+            stalled = True
+
+        if not stalled:
+            return
+        if self._watchdog_last_kick_at and (now - self._watchdog_last_kick_at) < WATCHDOG_KICK_DEBOUNCE:
+            return
+
+        self._watchdog_last_kick_at = now
+        _LOGGER.warning("Watchdog kick: forcing safe rebuild due to stale scheduler state")
+        await self._run_rebuild_safe("watchdog_kick")
 
     async def _warm_directory_cache_safe(self, options: dict[str, Any], flights: list[dict[str, Any]]) -> None:
         try:
@@ -492,6 +758,8 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
             ):
                 flight.pop(legacy, None)
 
+            flight["ui"] = _build_ui_block(flight, now)
+
         self._flights = flights
         self.async_write_ha_state()
         # Notify selects/binary sensors even if state didn't change
@@ -503,6 +771,9 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
                 self.hass.async_create_task(self._run_rebuild_safe("scheduled_refresh"))
 
             self._next_refresh_unsub = async_track_point_in_utc_time(self.hass, _scheduled_refresh, next_refresh)
+            self._next_refresh_at = next_refresh
+        else:
+            self._next_refresh_at = None
 
 
 class FlightDashboardSelectedFlightSensor(SensorEntity):

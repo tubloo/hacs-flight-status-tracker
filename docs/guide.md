@@ -149,6 +149,12 @@ Exact refresh intervals depend on your configured polling schedule and minimum A
 - Services: idempotent service registration plus cleanup when the last integration entry unloads.
 - Schedule lookup: mock fixtures no longer preempt configured providers unless explicitly selected.
 
+### v1.0.0
+
+- Added scheduler watchdog self-healing for stale/missed scheduling state.
+- Added per-flight `ui` display block so dashboards can use precomputed backend values and reduce heavy template work.
+- Watchdog diagnostics are now exposed in flight sensor attributes (`last_rebuild_at`, `next_refresh_at`, `watchdog_last_*`).
+
 ## Storage / Data
 
 Stored locally under `/config/.storage/`:
