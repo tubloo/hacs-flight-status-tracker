@@ -3,9 +3,10 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import timedelta
+from functools import partial
 from typing import Any
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.storage import Store
@@ -125,14 +126,16 @@ def _schedule_save(hass: HomeAssistant) -> None:
     if data.get("api_metrics_save_unsub"):
         return
 
-    async def _save_later(_now) -> None:
+    @callback
+    def _save_later(_now) -> None:
         data["api_metrics_save_unsub"] = None
-        await _async_save_metrics(hass)
+        # Use add_job to remain thread-safe even if callback is fired off-loop.
+        hass.add_job(_async_save_metrics(hass))
 
     data["api_metrics_save_unsub"] = async_call_later(
         hass,
         _SAVE_DEBOUNCE.total_seconds(),
-        lambda now: hass.async_create_task(_save_later(now)),
+        _save_later,
     )
 
 
@@ -156,7 +159,19 @@ def record_api_call(
     flow: str = "other",
     outcome: str | None = "success",
 ) -> None:
-    """Record a provider API call."""
+    """Record a provider API call in a thread-safe way."""
+    hass.add_job(partial(_record_api_call_on_loop, hass, provider, flow=flow, outcome=outcome))
+
+
+@callback
+def _record_api_call_on_loop(
+    hass: HomeAssistant,
+    provider: str | None,
+    *,
+    flow: str = "other",
+    outcome: str | None = "success",
+) -> None:
+    """Record a provider API call on the HA event loop."""
     metrics = _metrics_data(hass)
     providers = metrics.setdefault("providers", {})
     if not isinstance(providers, dict):

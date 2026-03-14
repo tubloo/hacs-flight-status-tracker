@@ -102,6 +102,8 @@ class Flightradar24StatusProvider:
                 break
         if best is None:
             best = rows[0]
+        best_orig = (best.get("orig_iata") or best.get("origin_iata") or "").strip()
+        best_dest = (best.get("dest_iata") or best.get("destination_iata") or "").strip()
 
         takeoff = _parse_dt(best.get("datetime_takeoff"))
         landed = _parse_dt(best.get("datetime_landed"))
@@ -144,9 +146,9 @@ class Flightradar24StatusProvider:
             "arr_actual": _iso(landed),
             "aircraft_type": aircraft_type,
             "position": position,
-            "dep_iata": orig or None,
-            "arr_iata": dest or None,
-            "orig_iata": orig or None,
-            "dest_iata": dest or None,
+            "dep_iata": best_orig or None,
+            "arr_iata": best_dest or None,
+            "orig_iata": best_orig or None,
+            "dest_iata": best_dest or None,
             "fr24_id": best.get("fr24_id"),
         }

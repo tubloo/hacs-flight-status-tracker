@@ -49,11 +49,12 @@ Note: Home Assistant also creates `update.flight_status_tracker_update` (normal 
 The integration separates providers by responsibility:
 
 - Schedule provider: used for preview/add to resolve airports and scheduled times.
+- Schedule provider is strict: preview/add only queries the provider you selected.
 - Status provider: used for ongoing updates (status/times/optional gates/terminals).
 - Position provider: optional; used for live position. Disabled by default.
 - Directory enrichment: airport/airline metadata can use:
   - `inbuilt` (OpenFlights/Airportsdata), or
-  - `provider` (FlightAPI code lookup first, fallback to inbuilt).
+  - `provider` (configured providers first: FlightAPI/Aviationstack/AirLabs, then fallback to inbuilt).
 
 ## Options (Common)
 
@@ -64,16 +65,35 @@ These are configured in the integration Options UI (Settings > Devices & Service
 - Include past hours: include flights that departed recently.
 - Days ahead: how far into the future to include flights.
 - Max flights: maximum number of flights kept in the list.
-- Merge tolerance (hours): when multiple sources return the “same” flight, this prevents duplicates.
 
 ### Providers
 
 - Schedule provider: used for preview/add to find airports + scheduled times.
+  - There is no schedule `auto` mode. You must select one schedule provider.
+  - Preview/add does not cross-fallback to other schedule providers.
 - Status provider: used for ongoing status updates.
 - Position provider: optional; adds live position when supported.
-- Airline/Airport data source:
-  - `inbuilt`: use OpenFlights/Airportsdata cache only.
-  - `provider`: use FlightAPI code lookup first, then fallback to inbuilt.
+- Airline/Airport data source is always hybrid: configured providers first (FlightAPI/Aviationstack/AirLabs), then fallback to inbuilt cache.
+
+Provider capability summary:
+- `flightapi`: schedule + status; no live position.
+- `aviationstack`: schedule + status (depends on plan access); no live position.
+- `airlabs`: schedule + status; limited live position fields via status payload.
+- `flightradar24`: schedule + status + live position.
+- `opensky`: status/position enrichment only (no schedule lookup).
+- `local`: status simulation only (no external API).
+- `mock`: testing only.
+
+Aviationstack note:
+- Current-day schedule queries use `flight_schedules`/`timetable`; future-day queries use `flightsFuture`.
+- `flightsFuture` is provider-restricted to sufficiently future dates (provider validates this window).
+- Aviationstack documents strict short-window throttling on schedule endpoints; avoid back-to-back calls inside ~10 seconds.
+- Timetable/schedule endpoint access depends on your Aviationstack plan.
+- If the selected provider does not return a record for the requested date/flight, preview returns `no_match`.
+
+Validation rule:
+- Options must include at least one usable external provider with credentials.
+- Local/mock-only setups are blocked in Options validation.
 
 ### Auto-removal (cleanup)
 
@@ -93,7 +113,6 @@ Instead of polling constantly, the integration uses a time-based schedule:
 
 The schedule is configured using these options:
 
-- Minimum API poll interval (minutes): a safety floor; polling will never be faster than this (minimum 5 minutes).
 - Far-Future threshold (hours before departure): when Far-Future starts.
 - Far-Future poll interval (minutes): how often to poll in Far-Future.
 - Prepare to Travel poll interval (minutes): how often to poll before the Take Off window starts.
@@ -103,8 +122,7 @@ The schedule is configured using these options:
 - Post Arrival stop polling (minutes): hard stop for status polling after arrival.
 
 Validation rules (to prevent accidental over-polling):
-- Minimum API poll interval must be **at least 5 minutes**.
-- Far-Future / Prepare to Travel / Mid Flight poll intervals must be **greater than or equal** to the minimum API poll interval.
+- Far-Future / Prepare to Travel / Mid Flight poll intervals must be **at least 5 minutes**.
 - Take Off and Landing poll intervals may be set as low as **1 minute**.
 - Post Arrival stop polling (minutes) must be **at least** the Landing window “minutes after arrival”.
 
@@ -119,7 +137,7 @@ The integration still behaves with these defaults:
 - Days ahead: 120
 - Auto-remove past flights: true
 - Auto-remove flight (minutes after arrival): 60
-- Minimum API poll interval (minutes): 5
+- Internal minimum API poll floor: 5 (not user-configurable)
 - Position provider: disabled
 
 ## Status Refresh Policy (High Level)
@@ -129,7 +147,7 @@ The integration aims to reduce provider calls:
 - Status refresh frequency increases as departure approaches and while in-flight.
 - After arrival/cancellation, refresh stops and the flight becomes eligible for pruning.
 
-Exact refresh intervals depend on your configured polling schedule and minimum API poll interval.
+Exact refresh intervals depend on your configured polling schedule.
 
 ## API Call Metrics
 
@@ -153,7 +171,7 @@ This gives a single, consistent attribute model across providers for dashboard c
 ### v0.3.0
 
 - TripIt was removed (manual flights only).
-- Polling minimum is now configured via `min_api_poll_minutes` in Options (replaces the old `status_ttl_minutes` key).
+- Polling uses an internal 5-minute floor for non-critical windows.
 - Auto-removal of past flights is configured in **minutes** after arrival (instead of hours).
 
 ### v0.3.1
@@ -180,6 +198,12 @@ This gives a single, consistent attribute model across providers for dashboard c
 - Polling windows renamed/simplified to: Far-Future, Prepare to Travel, Take Off, Mid Flight, Landing, Post Arrival.
 - Prepare to Travel now replaces the previous mid/near pre-departure split.
 - Take Off and Landing poll intervals now allow a minimum of 1 minute.
+
+### v1.0.3
+
+- Removed schedule provider `auto` mode.
+- Schedule lookup now always uses the explicitly selected provider.
+- For backward compatibility, legacy saved `schedule_provider: auto` is coerced to `flightapi`.
 
 ## Storage / Data
 
@@ -213,6 +237,7 @@ Actions:
 
 - Check `sensor.flight_status_tracker_add_preview` attribute `preview` for `error` / `hint`.
 - Ensure schedule provider is configured and has a valid API key.
+- Ensure the selected schedule provider has data for that date/flight; preview does not fallback to other providers.
 - Try adding `dep_airport` for disambiguation (same flight number can exist across routes).
 
 ### Entities show with unexpected IDs

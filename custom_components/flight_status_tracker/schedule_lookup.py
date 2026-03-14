@@ -4,11 +4,9 @@ Input: query like "AI 157" or "AI157" and a date string "YYYY-MM-DD"
 Output: canonical Flight v3 dict (minimal schedule) OR error.
 
 This module is designed so we can swap providers later.
-Right now it tries providers in this order:
-1) aviationstack (if configured)
-2) airlabs (if configured)
-3) flightapi (if configured)
-4) flightradar24 (if configured)
+Provider selection behavior:
+1) Use only the explicitly selected schedule provider
+2) Legacy "auto" values are coerced to default provider for compatibility
 
 If none configured -> error no_provider
 """
@@ -124,6 +122,38 @@ def _normalize_flight_times(flight: dict[str, Any]) -> dict[str, Any]:
     return flight
 
 
+def _departure_local_date(flight: dict[str, Any]) -> str | None:
+    """Return departure local date (YYYY-MM-DD) if derivable."""
+    dep = flight.get("dep") or {}
+    dep_air = dep.get("airport") or {}
+    dep_sched = dep.get("scheduled")
+    if not isinstance(dep_sched, str) or not dep_sched:
+        return None
+    try:
+        dt = datetime.fromisoformat(dep_sched.replace("Z", "+00:00").replace(" ", "T"))
+    except Exception:
+        return None
+    tzname = dep_air.get("tz")
+    if dt.tzinfo and tzname:
+        try:
+            dt = dt.astimezone(ZoneInfo(str(tzname)))
+        except Exception:
+            pass
+    return dt.date().isoformat()
+
+
+def _matches_requested_date(flight: dict[str, Any], requested_date: str) -> bool:
+    """Validate schedule candidate against requested departure date."""
+    req = (requested_date or "").strip()[:10]
+    if not req:
+        return True
+    dep_date = _departure_local_date(flight)
+    # If we cannot derive date, keep candidate (avoid false negatives).
+    if not dep_date:
+        return True
+    return dep_date == req
+
+
 async def _lookup_mock_fixture(
     hass: HomeAssistant, airline_code: str, flight_number: str, date_str: str
 ) -> dict[str, Any] | None:
@@ -169,7 +199,7 @@ async def lookup_schedule(
     dep_airport = dep_airport.strip().upper() if isinstance(dep_airport, str) and dep_airport.strip() else None
     arr_airport = arr_airport.strip().upper() if isinstance(arr_airport, str) and arr_airport.strip() else None
 
-    # Decide provider order: user preference first, then fallbacks
+    # Decide provider order.
     use_sandbox = bool(options.get(CONF_FR24_USE_SANDBOX, False))
     fr24_key = (options.get(CONF_FR24_API_KEY) or "").strip()
     fr24_sandbox_key = (options.get(CONF_FR24_SANDBOX_KEY) or "").strip()
@@ -189,13 +219,14 @@ async def lookup_schedule(
     if schedule_pref == "flightradar24" and not fr24_active_key:
         return {"error": "no_provider", "hint": "FR24 API key is required for schedule lookup."}
 
+    # Legacy compatibility: "auto" is removed; coerce to default provider.
     if schedule_pref == "auto":
-        order = ["aviationstack", "airlabs", "flightapi", "flightradar24", "mock"]
-    else:
-        order = [schedule_pref]
-        if "mock" not in order:
-            order.append("mock")
+        schedule_pref = "flightapi"
+    strict_provider = True
+    order = [schedule_pref]
     _LOGGER.debug("Schedule lookup providers order=%s pref=%s", order, schedule_pref)
+
+    last_provider_error: dict[str, Any] | None = None
 
     # Only short-circuit on mock when explicitly selected as primary provider.
     if order and order[0] == "mock":
@@ -225,11 +256,14 @@ async def lookup_schedule(
             flight_shell = {
                 "airline_code": airline_code,
                 "flight_number": flight_number,
-                "dep": {"airport": {"iata": None}, "scheduled": f"{date_str}T00:00:00+00:00"},
-                "arr": {"airport": {"iata": None}, "scheduled": f"{date_str}T00:00:00+00:00"},
+                "dep": {"airport": {"iata": dep_airport}, "scheduled": f"{date_str}T00:00:00+00:00"},
+                "arr": {"airport": {"iata": arr_airport}, "scheduled": f"{date_str}T00:00:00+00:00"},
             }
             _LOGGER.debug("FR24 schedule lookup for %s %s on %s", airline_code, flight_number, date_str)
-            st = await statusp.async_get_status(flight_shell)
+            try:
+                st = await statusp.async_get_status(flight_shell)
+            except Exception as e:
+                st = {"error": "network", "detail": str(e)}
             if isinstance(st, dict):
                 record_api_call(hass, "flightradar24", flow="schedule", outcome=_outcome_from_error(st.get("error")))
             else:
@@ -289,7 +323,15 @@ async def lookup_schedule(
                         "gate": st.get("gate_arr"),
                     },
                 }
-                return {"flight": _normalize_flight_times(flight), "provider": "flightradar24"}
+                norm = _normalize_flight_times(flight)
+                if not _matches_requested_date(norm, date_str):
+                    _LOGGER.debug(
+                        "FR24 candidate date mismatch requested=%s dep_local=%s; trying next provider",
+                        date_str,
+                        _departure_local_date(norm),
+                    )
+                else:
+                    return {"flight": norm, "provider": "flightradar24"}
         else:
             _LOGGER.warning("FR24 status provider could not be loaded.")
 
@@ -300,10 +342,19 @@ async def lookup_schedule(
             AviationstackStatusProvider = None  # type: ignore
 
         if AviationstackStatusProvider:
-            st = await AviationstackStatusProvider(hass, av_key).async_get_status(
-                {"airline_code": airline_code, "flight_number": flight_number, "scheduled_departure": f"{date_str}T00:00:00+00:00"}
-            )
-            details = st.details if st else None
+            try:
+                st = await AviationstackStatusProvider(hass, av_key).async_get_status(
+                    {
+                        "airline_code": airline_code,
+                        "flight_number": flight_number,
+                        "scheduled_departure": f"{date_str}T00:00:00+00:00",
+                        "dep_airport": dep_airport,
+                        "arr_airport": arr_airport,
+                    }
+                )
+                details = st.details if st else None
+            except Exception as e:
+                details = {"error": "network", "error_message": str(e)}
             record_api_call(
                 hass,
                 "aviationstack",
@@ -344,7 +395,15 @@ async def lookup_schedule(
                         "gate": details.get("gate_arr"),
                     },
                 }
-                return {"flight": _normalize_flight_times(flight), "provider": "aviationstack"}
+                norm = _normalize_flight_times(flight)
+                if not _matches_requested_date(norm, date_str):
+                    _LOGGER.debug(
+                        "Aviationstack candidate date mismatch requested=%s dep_local=%s; trying next provider",
+                        date_str,
+                        _departure_local_date(norm),
+                    )
+                else:
+                    return {"flight": norm, "provider": "aviationstack"}
             if isinstance(details, dict) and details.get("error") in ("rate_limited", "quota_exceeded"):
                 reason = details.get("error")
                 block_for = details.get("retry_after") or (24 * 60 * 60 if reason == "quota_exceeded" else 900)
@@ -355,10 +414,52 @@ async def lookup_schedule(
                     _LOGGER.warning("Aviationstack schedule lookup error: %s", details.get("error"))
                 else:
                     _LOGGER.debug("Aviationstack schedule lookup error: %s", details.get("error"))
-                if details.get("error") == "quota_exceeded":
-                    return {"error": "provider_error", "hint": "Aviationstack quota exceeded. Try again later."}
-                if details.get("error") == "rate_limited":
-                    return {"error": "provider_error", "hint": "Aviationstack rate limit reached. Try again later."}
+                err = details.get("error")
+                if err == "quota_exceeded":
+                    payload = {
+                        "error": "provider_error",
+                        "hint": "Aviationstack quota exceeded. Try again later.",
+                        "provider": "aviationstack",
+                    }
+                    if strict_provider:
+                        return payload
+                    last_provider_error = payload
+                elif err == "rate_limited":
+                    payload = {
+                        "error": "provider_error",
+                        "hint": "Aviationstack rate limit reached. Try again later.",
+                        "provider": "aviationstack",
+                    }
+                    if strict_provider:
+                        return payload
+                    last_provider_error = payload
+                elif err == "plan_restricted":
+                    payload = {
+                        "error": "provider_error",
+                        "hint": "Aviationstack plan does not include flights endpoint. Upgrade plan or use another schedule provider.",
+                        "provider": "aviationstack",
+                    }
+                    if strict_provider:
+                        return payload
+                    last_provider_error = payload
+                elif err == "auth_error":
+                    payload = {
+                        "error": "provider_error",
+                        "hint": "Aviationstack key invalid or unauthorized.",
+                        "provider": "aviationstack",
+                    }
+                    if strict_provider:
+                        return payload
+                    last_provider_error = payload
+                else:
+                    payload = {
+                        "error": "provider_error",
+                        "hint": details.get("error_message") or "Aviationstack error. Try another provider or verify the date.",
+                        "provider": "aviationstack",
+                    }
+                    if strict_provider:
+                        return payload
+                    last_provider_error = payload
 
     if "airlabs" in order and al_key and not is_blocked(hass, "airlabs"):
         try:
@@ -367,10 +468,19 @@ async def lookup_schedule(
             AirLabsStatusProvider = None  # type: ignore
 
         if AirLabsStatusProvider:
-            st = await AirLabsStatusProvider(hass, al_key).async_get_status(
-                {"airline_code": airline_code, "flight_number": flight_number, "scheduled_departure": f"{date_str}T00:00:00+00:00"}
-            )
-            details = st.details if st else None
+            try:
+                st = await AirLabsStatusProvider(hass, al_key).async_get_status(
+                    {
+                        "airline_code": airline_code,
+                        "flight_number": flight_number,
+                        "scheduled_departure": f"{date_str}T00:00:00+00:00",
+                        "dep_airport": dep_airport,
+                        "arr_airport": arr_airport,
+                    }
+                )
+                details = st.details if st else None
+            except Exception as e:
+                details = {"error": "network", "error_message": str(e)}
             record_api_call(
                 hass,
                 "airlabs",
@@ -411,7 +521,15 @@ async def lookup_schedule(
                         "gate": details.get("gate_arr"),
                     },
                 }
-                return {"flight": _normalize_flight_times(flight), "provider": "airlabs"}
+                norm = _normalize_flight_times(flight)
+                if not _matches_requested_date(norm, date_str):
+                    _LOGGER.debug(
+                        "AirLabs candidate date mismatch requested=%s dep_local=%s; trying next provider",
+                        date_str,
+                        _departure_local_date(norm),
+                    )
+                else:
+                    return {"flight": norm, "provider": "airlabs"}
             if isinstance(details, dict) and details.get("error") in ("rate_limited", "quota_exceeded"):
                 reason = details.get("error")
                 block_for = details.get("retry_after") or (24 * 60 * 60 if reason == "quota_exceeded" else 900)
@@ -423,9 +541,32 @@ async def lookup_schedule(
                 else:
                     _LOGGER.debug("AirLabs schedule lookup error: %s", details.get("error"))
                 if details.get("error") == "quota_exceeded":
-                    return {"error": "provider_error", "hint": "AirLabs quota exceeded. Try again later."}
-                if details.get("error") == "rate_limited":
-                    return {"error": "provider_error", "hint": "AirLabs rate limit reached. Try again later."}
+                    payload = {
+                        "error": "provider_error",
+                        "hint": "AirLabs quota exceeded. Try again later.",
+                        "provider": "airlabs",
+                    }
+                    if strict_provider:
+                        return payload
+                    last_provider_error = payload
+                elif details.get("error") == "rate_limited":
+                    payload = {
+                        "error": "provider_error",
+                        "hint": "AirLabs rate limit reached. Try again later.",
+                        "provider": "airlabs",
+                    }
+                    if strict_provider:
+                        return payload
+                    last_provider_error = payload
+                else:
+                    payload = {
+                        "error": "provider_error",
+                        "hint": details.get("error_message") or "AirLabs error. Try another provider or verify the date.",
+                        "provider": "airlabs",
+                    }
+                    if strict_provider:
+                        return payload
+                    last_provider_error = payload
 
     if "flightapi" in order:
         _LOGGER.debug(
@@ -442,15 +583,19 @@ async def lookup_schedule(
 
         if FlightAPIStatusProvider:
             _LOGGER.debug("FlightAPI schedule lookup for %s %s on %s", airline_code, flight_number, date_str)
-            st = await FlightAPIStatusProvider(hass, fa_key).async_get_status(
-                {
-                    "airline_code": airline_code,
-                    "flight_number": flight_number,
-                    "scheduled_departure": f"{date_str}T00:00:00+00:00",
-                    "dep_airport": dep_airport,
-                }
-            )
-            details = st.details if st else None
+            try:
+                st = await FlightAPIStatusProvider(hass, fa_key).async_get_status(
+                    {
+                        "airline_code": airline_code,
+                        "flight_number": flight_number,
+                        "scheduled_departure": f"{date_str}T00:00:00+00:00",
+                        "dep_airport": dep_airport,
+                        "arr_airport": arr_airport,
+                    }
+                )
+                details = st.details if st else None
+            except Exception as e:
+                details = {"error": "network", "error_message": str(e)}
             record_api_call(
                 hass,
                 "flightapi",
@@ -491,7 +636,15 @@ async def lookup_schedule(
                         "gate": details.get("gate_arr"),
                     },
                 }
-                return {"flight": _normalize_flight_times(flight), "provider": "flightapi"}
+                norm = _normalize_flight_times(flight)
+                if not _matches_requested_date(norm, date_str):
+                    _LOGGER.debug(
+                        "FlightAPI candidate date mismatch requested=%s dep_local=%s; trying next provider",
+                        date_str,
+                        _departure_local_date(norm),
+                    )
+                else:
+                    return {"flight": norm, "provider": "flightapi"}
             if isinstance(details, dict) and details.get("error") in ("rate_limited", "quota_exceeded"):
                 reason = details.get("error")
                 block_for = details.get("retry_after") or (24 * 60 * 60 if reason == "quota_exceeded" else 900)
@@ -504,26 +657,50 @@ async def lookup_schedule(
                 else:
                     _LOGGER.debug("FlightAPI schedule lookup error: %s", details.get("error_message") or err)
                 if err == "quota_exceeded":
-                    return {"error": "provider_error", "hint": "FlightAPI.io quota exceeded. Try again later.", "provider": "flightapi"}
-                if err == "rate_limited":
-                    return {"error": "provider_error", "hint": "FlightAPI.io rate limit reached. Try again later.", "provider": "flightapi"}
-                if err == "no_match":
-                    return {"error": "no_match", "hint": "No match found for that date. Verify flight number and date.", "provider": "flightapi"}
-                if err == "auth_error":
-                    return {"error": "provider_error", "hint": "FlightAPI.io key invalid or unauthorized.", "provider": "flightapi"}
-                return {"error": "provider_error", "hint": "FlightAPI.io error. Try another provider or verify the date.", "provider": "flightapi"}
-
-    # If no provider keys configured
-    if "mock" in order:
-        rec = await _lookup_mock_fixture(hass, airline_code, flight_number, date_str)
-        if rec:
-            return {"flight": rec, "provider": "mock"}
+                    payload = {
+                        "error": "provider_error",
+                        "hint": "FlightAPI.io quota exceeded. Try again later.",
+                        "provider": "flightapi",
+                    }
+                    if strict_provider:
+                        return payload
+                    last_provider_error = payload
+                elif err == "rate_limited":
+                    payload = {
+                        "error": "provider_error",
+                        "hint": "FlightAPI.io rate limit reached. Try again later.",
+                        "provider": "flightapi",
+                    }
+                    if strict_provider:
+                        return payload
+                    last_provider_error = payload
+                elif err == "auth_error":
+                    payload = {
+                        "error": "provider_error",
+                        "hint": "FlightAPI.io key invalid or unauthorized.",
+                        "provider": "flightapi",
+                    }
+                    if strict_provider:
+                        return payload
+                    last_provider_error = payload
+                elif err and err != "no_match":
+                    payload = {
+                        "error": "provider_error",
+                        "hint": "FlightAPI.io error. Try another provider or verify the date.",
+                        "provider": "flightapi",
+                    }
+                    if strict_provider:
+                        return payload
+                    last_provider_error = payload
 
     if not (av_key or al_key or fa_key or fr24_active_key):
         return {
             "error": "no_provider",
             "hint": "No schedule provider configured. Add an API key in Flight Status Tracker options.",
         }
+
+    if last_provider_error:
+        return last_provider_error
 
     # If we reach here, we couldn't match (or providers not implemented for schedule lookups)
     return {"error": "no_match", "hint": "No match found for that date (or provider limits). Try a different date."}

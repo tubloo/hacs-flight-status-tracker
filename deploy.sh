@@ -22,15 +22,26 @@ if [ -f "$PKG_SRC" ]; then
   rsync -av "$PKG_SRC" "$PKG_DEST"
   echo "Deployed package to $PKG_DEST"
 fi
-echo "Restarting Home Assistant container: ha-flight-dashboard-dev"
-docker restart ha-flight-dashboard-dev >/dev/null
+if [ -n "${HA_CONTAINER:-}" ]; then
+  CONTAINER="$HA_CONTAINER"
+elif docker ps --format '{{.Names}}' | grep -Fxq "ha-flight-dashboard-dev"; then
+  CONTAINER="ha-flight-dashboard-dev"
+elif docker ps --format '{{.Names}}' | grep -Fxq "ha-dev-test"; then
+  CONTAINER="ha-dev-test"
+else
+  echo "No Home Assistant container found. Set HA_CONTAINER env var or start one of: ha-flight-dashboard-dev, ha-dev-test" >&2
+  exit 1
+fi
+
+echo "Restarting Home Assistant container: $CONTAINER"
+docker restart "$CONTAINER" >/dev/null
 echo "Restarted."
 
 echo "Waiting for Home Assistant to start..."
 sleep 10
 
 echo "Recent Docker logs:"
-docker logs --tail 200 ha-flight-dashboard-dev || true
+docker logs --tail 200 "$CONTAINER" || true
 
 HASS_LOG="/Users/sumitghosh/dev/ha-flight-dashboard/config/home-assistant.log"
 if [ -f "$HASS_LOG" ]; then

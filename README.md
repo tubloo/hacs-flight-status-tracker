@@ -59,6 +59,7 @@ For a detailed walkthrough and troubleshooting, see `docs/guide.md`.
 ## Configuration Notes
 
 - **Schedule provider** is used for preview/add (must return scheduled times).
+- Schedule lookup is **strict**: only the selected schedule provider is used (no cross-provider fallback).
 - **Status provider** is used for live status updates.
 - Provider timestamps are normalized to UTC internally.
 - **Position provider** is optional and is disabled by default.
@@ -74,7 +75,7 @@ uses sensible defaults:
 - Days ahead: `120`
 - Auto-remove past flights: `true`
 - Auto-remove flight (minutes after arrival): `60`
-- Minimum API poll interval (minutes): `5`
+- Internal minimum API poll floor: `5` (not user-configurable)
 - Position provider: `disabled`
 
 ## Services
@@ -125,11 +126,15 @@ If a card is not listed in HACS, add its GitHub repo under **HACS > Frontend > C
 - Preview shows nothing:
   - Check `sensor.flight_status_tracker_add_preview` attribute `preview` in Developer Tools -> States.
   - Ensure the schedule provider is configured and has a valid API key.
+  - Schedule lookup does not fail over to another provider. If your selected schedule provider has no record for that date/flight, preview will stay `no_match`.
+  - Aviationstack note: near-future schedule coverage can vary by plan/data availability. Current-day lookups use schedule/timetable endpoints, while future-day lookups use `flightsFuture` (provider-enforced window). Avoid repeated schedule queries within ~10 seconds to reduce rate-limit errors.
   
 ## Upgrade Notes
 
-- `v0.3.0`: TripIt removed; polling minimum now uses `min_api_poll_minutes`; auto-remove delay is configured in minutes after arrival.
+- `v0.3.0`: TripIt removed; auto-remove delay is configured in minutes after arrival.
 - `v0.3.1`: Performance improvements (less disk I/O for directory cache; less per-flight overhead when scheduling refreshes).
 - `v0.3.2`: Reliability fixes for startup/reload and refresh scheduling (safe rebuild retry on errors, startup manual-flight listener ordering, non-blocking directory warmup/refresh, consistent FR24 rate-limit block keying, and service re-registration/unload cleanup). Also includes schedule lookup ordering fix (mock no longer preempts configured providers) and service docs update (`dep_airport` field for preview/add).
 - `v1.0.0`: Added scheduler watchdog self-healing and per-flight `ui` display block for faster dashboard templates. Watchdog adds diagnostics (`last_rebuild_at`, `next_refresh_at`, `watchdog_last_*`) and auto-kicks rebuild on stale scheduling state without forcing unnecessary API polls.
 - `v1.0.1`: Polling windows simplified to Far-Future, Prepare to Travel, Take Off, Mid Flight, Landing, and Post Arrival. Prepare-to-Travel replaces previous mid/near pre-departure split. Take Off and Landing poll intervals now support a minimum of 1 minute.
+- `v1.0.2`: Options UI moved to a step-based wizard (mode -> providers -> credentials -> polling -> list/cleanup -> review). `min_api_poll_minutes` removed from the wizard and fixed internally at 5 minutes.
+- `v1.0.3`: Removed schedule provider `auto` mode. Schedule lookup now always uses the explicitly selected provider. Legacy saved `auto` values are coerced to `flightapi` for compatibility.

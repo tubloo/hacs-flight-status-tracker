@@ -1,7 +1,7 @@
 """AirLabs status provider."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -46,6 +46,22 @@ def _iso(s: str | None) -> str | None:
         return s
 
 
+def _date_token(val: Any) -> date | None:
+    if not isinstance(val, str):
+        return None
+    raw = val.strip()
+    if len(raw) < 10:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00").replace(" ", "T")).date()
+    except Exception:
+        pass
+    try:
+        return datetime.strptime(raw[:10], "%Y-%m-%d").date()
+    except Exception:
+        return None
+
+
 class AirLabsStatusProvider:
     def __init__(self, hass: HomeAssistant, api_key: str) -> None:
         self.hass = hass
@@ -63,9 +79,13 @@ class AirLabsStatusProvider:
         params = {"api_key": self.api_key, "flight_iata": flight_iata}
 
         session = async_get_clientsession(self.hass)
-        async with session.get(url, params=params, timeout=25) as resp:
-            payload = await resp.json(content_type=None)
-            retry_after = resp.headers.get("Retry-After")
+        try:
+            async with session.get(url, params=params, timeout=25) as resp:
+                payload = await resp.json(content_type=None)
+                retry_after = resp.headers.get("Retry-After")
+        except Exception:
+            details = {"provider": "airlabs", "state": "unknown", "error": "network"}
+            return FlightStatus(provider="airlabs", state="unknown", details=details)
 
         if isinstance(payload, dict) and payload.get("error"):
             err = payload.get("error")
@@ -104,6 +124,16 @@ class AirLabsStatusProvider:
                 )
             return None
 
+        # Optional route disambiguation for multi-leg flight numbers.
+        dep_filter = (flight.get("dep_airport") or flight.get("dep_iata") or "").strip().upper()
+        arr_filter = (flight.get("arr_airport") or flight.get("arr_iata") or "").strip().upper()
+        dep_iata_resp = (resp_obj.get("dep_iata") or resp_obj.get("departure_iata") or "").strip().upper()
+        arr_iata_resp = (resp_obj.get("arr_iata") or resp_obj.get("arrival_iata") or "").strip().upper()
+        if dep_filter and dep_iata_resp and dep_filter != dep_iata_resp:
+            return None
+        if arr_filter and arr_iata_resp and arr_filter != arr_iata_resp:
+            return None
+
         status = (resp_obj.get("status") or "unknown").lower()
 
         # AirLabs exposes both local and UTC variants. Prefer UTC when present;
@@ -114,6 +144,16 @@ class AirLabsStatusProvider:
         dep_act = resp_obj.get("dep_actual_utc") or resp_obj.get("dep_actual")
         arr_est = resp_obj.get("arr_estimated_utc") or resp_obj.get("arr_estimated")
         arr_act = resp_obj.get("arr_actual_utc") or resp_obj.get("arr_actual")
+
+        # AirLabs /flight is not explicitly date-scoped; reject obvious wrong-day
+        # matches for recurring flight numbers, while tolerating timezone edges.
+        requested_dt = _date_token(flight.get("scheduled_departure"))
+        if requested_dt is None:
+            dep_req = (flight.get("dep") or {})
+            requested_dt = _date_token(dep_req.get("scheduled"))
+        response_dt = _date_token(dep_sched) or _date_token(dep_est) or _date_token(dep_act)
+        if requested_dt and response_dt and abs((response_dt - requested_dt).days) > 1:
+            return None
 
         details = {
             "provider": "airlabs",
@@ -132,6 +172,13 @@ class AirLabsStatusProvider:
             "terminal_arr": resp_obj.get("arr_terminal"),
             "gate_arr": resp_obj.get("arr_gate"),
             "delay_minutes": resp_obj.get("delay"),
+            # Optional live fields when available in payload.
+            "lat": resp_obj.get("lat") or resp_obj.get("latitude"),
+            "lon": resp_obj.get("lng") or resp_obj.get("lon") or resp_obj.get("longitude"),
+            "alt": resp_obj.get("alt"),
+            "track": resp_obj.get("dir") or resp_obj.get("track"),
+            "gspeed": resp_obj.get("speed") or resp_obj.get("speed_kts"),
+            "timestamp": resp_obj.get("updated") or resp_obj.get("ts"),
             # useful for OpenSky enrichment sometimes
             "icao24": (resp_obj.get("hex") or resp_obj.get("icao24") or "").lower().strip() or None,
         }

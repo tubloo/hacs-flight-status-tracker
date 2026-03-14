@@ -23,8 +23,15 @@ class OpenSkyEnrichmentProvider:
         params = {"icao24": icao24}
 
         session = async_get_clientsession(self.hass)
-        async with session.get(url, params=params, timeout=25) as resp:
-            payload = await resp.json(content_type=None)
+        try:
+            async with session.get(url, params=params, timeout=25) as resp:
+                payload = await resp.json(content_type=None)
+        except Exception:
+            return FlightStatus(
+                provider="opensky",
+                state="unknown",
+                details={"provider": "opensky", "state": "unknown", "error": "network"},
+            )
 
         states = payload.get("states") if isinstance(payload, dict) else None
         if not isinstance(states, list) or not states:

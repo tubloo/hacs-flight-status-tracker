@@ -209,8 +209,8 @@ def _polling_config(options: dict[str, Any]) -> dict[str, int]:
         except Exception:
             return default
 
-    # Minimum API polling interval (minutes). Never allow below 5.
-    min_poll_minutes = max(5, _opt_int("min_api_poll_minutes", 5))
+    # Fixed minimum API polling interval (minutes). Kept at 5 for call rationing.
+    min_poll_minutes = 5
     min_poll_seconds = max(60, min_poll_minutes * 60)
 
     far_thr_hours = max(0, _opt_int("far_before_dep_threshold_hours", 6))

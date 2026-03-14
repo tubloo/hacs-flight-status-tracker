@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import csv
+import re
 from io import StringIO
 from datetime import datetime, timezone
 from typing import Any
@@ -25,6 +26,8 @@ from .providers.openflights.directory import (
     OPENFLIGHTS_AIRPORTS_URL,
     async_get_airport as openflights_get_airport,
 )
+from .providers.aviationstack.directory import AviationstackDirectoryProvider
+from .providers.airlabs.directory import AirLabsDirectoryProvider
 from .directory_store import (
     async_get_airport,
     async_get_airline,
@@ -50,7 +53,12 @@ CONF_DIRECTORY_SOURCE_MODE = "directory_source_mode"
 DIRECTORY_SOURCE_INBUILT = "inbuilt"
 DIRECTORY_SOURCE_PROVIDER = "provider"
 DEFAULT_DIRECTORY_SOURCE_MODE = DIRECTORY_SOURCE_INBUILT
+_CONF_SCHEDULE_PROVIDER = "schedule_provider"
+_CONF_STATUS_PROVIDER = "status_provider"
 _SOURCE_FLIGHTAPI = "flightapi_iata"
+_SOURCE_AVIATIONSTACK = "aviationstack"
+_SOURCE_AIRLABS = "airlabs"
+_PROVIDER_SOURCES = {_SOURCE_FLIGHTAPI, _SOURCE_AVIATIONSTACK, _SOURCE_AIRLABS}
 
 def airline_logo_url(iata: str | None) -> str | None:
     """Return a lightweight logo URL for airline IATA code."""
@@ -73,6 +81,26 @@ def _is_source(entry: dict[str, Any] | None, source: str) -> bool:
     if not isinstance(entry, dict):
         return False
     return str(entry.get("source") or "").strip().lower() == source
+
+
+def _is_provider_source(entry: dict[str, Any] | None) -> bool:
+    if not isinstance(entry, dict):
+        return False
+    src = str(entry.get("source") or "").strip().lower()
+    return src in _PROVIDER_SOURCES
+
+
+def _provider_order(options: dict[str, Any]) -> list[str]:
+    """Build provider order using configured schedule/status preference first."""
+    preferred: list[str] = []
+    for key in (_CONF_SCHEDULE_PROVIDER, _CONF_STATUS_PROVIDER):
+        val = str(options.get(key) or "").strip().lower()
+        if val in ("flightapi", "aviationstack", "airlabs") and val not in preferred:
+            preferred.append(val)
+    for p in ("flightapi", "aviationstack", "airlabs"):
+        if p not in preferred:
+            preferred.append(p)
+    return preferred
 
 
 def _pick_str(data: dict[str, Any], keys: tuple[str, ...]) -> str | None:
@@ -289,6 +317,97 @@ def _is_complete_airport(data: dict[str, Any] | None) -> bool:
     return bool(data.get("name") and data.get("city") and data.get("tz"))
 
 
+def _merge_airport(primary: dict[str, Any] | None, fallback: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Merge missing airport fields from fallback into primary."""
+    if not isinstance(primary, dict) and not isinstance(fallback, dict):
+        return None
+    if not isinstance(primary, dict):
+        return dict(fallback or {})
+    if not isinstance(fallback, dict):
+        return dict(primary)
+
+    out = dict(primary)
+    for key in ("name", "city", "country", "tz", "icao", "lat", "lon"):
+        if not out.get(key) and fallback.get(key):
+            out[key] = fallback.get(key)
+    out["iata"] = out.get("iata") or fallback.get("iata")
+    return out
+
+
+_AIRPORT_STOPWORDS = {
+    "airport",
+    "international",
+    "intl",
+    "aerodrome",
+    "airfield",
+    "terminal",
+}
+
+
+def _name_tokens(name: str | None) -> set[str]:
+    if not name:
+        return set()
+    parts = re.findall(r"[a-zA-Z]+", name.lower())
+    return {p for p in parts if len(p) >= 3 and p not in _AIRPORT_STOPWORDS}
+
+
+async def _infer_airport_missing_fields(
+    hass: HomeAssistant, airport: dict[str, Any] | None, iata: str
+) -> dict[str, Any] | None:
+    """Best-effort fill for missing city/tz using existing cached airport records."""
+    if not isinstance(airport, dict):
+        return airport
+    if airport.get("city") and airport.get("tz"):
+        return airport
+
+    name = str(airport.get("name") or "").strip()
+    if not name:
+        return airport
+
+    tokens = _name_tokens(name)
+    if not tokens:
+        return airport
+
+    cache = await async_load_cache(hass)
+    airports = (cache.get("airports") or {}) if isinstance(cache, dict) else {}
+    if not isinstance(airports, dict) or not airports:
+        return airport
+
+    best: dict[str, Any] | None = None
+    best_score = 0
+    lowered_name = name.lower()
+    for code, cand in airports.items():
+        if str(code).upper() == iata:
+            continue
+        if not isinstance(cand, dict):
+            continue
+        city = str(cand.get("city") or "").strip()
+        tz = str(cand.get("tz") or "").strip()
+        if not city and not tz:
+            continue
+        cand_name = str(cand.get("name") or "").strip()
+        cand_tokens = _name_tokens(f"{city} {cand_name}")
+        overlap = len(tokens & cand_tokens)
+        score = overlap
+        if city and city.lower() in lowered_name:
+            score += 3
+        if score > best_score:
+            best_score = score
+            best = cand
+
+    if not best or best_score < 2:
+        return airport
+
+    out = dict(airport)
+    if not out.get("city"):
+        out["city"] = best.get("city")
+    if not out.get("tz"):
+        out["tz"] = best.get("tz")
+    if not out.get("country"):
+        out["country"] = best.get("country")
+    return out
+
+
 async def _get_airport_inbuilt(hass: HomeAssistant, iata: str) -> dict[str, Any] | None:
     await _ensure_airportsdata_cache(hass, ttl_days=_CACHE_TTL_DAYS)
     cached = await async_get_airport(hass, iata)
@@ -358,7 +477,7 @@ def _code_equals(candidate: dict[str, Any], expected: str, keys: tuple[str, ...]
     return False
 
 
-async def _get_airline_provider(hass: HomeAssistant, options: dict[str, Any], iata: str) -> dict[str, Any] | None:
+async def _get_airline_provider_flightapi(hass: HomeAssistant, options: dict[str, Any], iata: str) -> dict[str, Any] | None:
     api_key = str(options.get("flightapi_api_key") or "").strip()
     candidates = await _flightapi_iata_candidates(hass, api_key, iata, "airline")
     if not candidates:
@@ -366,9 +485,13 @@ async def _get_airline_provider(hass: HomeAssistant, options: dict[str, Any], ia
 
     code_keys = ("iata", "iata_code", "code", "fs", "airlineCode", "airline_code")
     matched = [c for c in candidates if _code_equals(c, iata, code_keys)]
-    if not matched:
+    c: dict[str, Any] | None = matched[0] if matched else None
+    if c is None and len(candidates) == 1:
+        # FlightAPI may return a single authoritative hit with non-IATA code fields
+        # (e.g. ICAO/FS only). Accept it instead of falling back to OpenFlights.
+        c = candidates[0]
+    if c is None:
         return None
-    c = matched[0]
     data = {
         "iata": iata,
         "icao": _pick_str(c, ("icao", "icao_code", "icaoCode")),
@@ -381,7 +504,7 @@ async def _get_airline_provider(hass: HomeAssistant, options: dict[str, Any], ia
     return await async_get_airline(hass, iata)
 
 
-async def _get_airport_provider(hass: HomeAssistant, options: dict[str, Any], iata: str) -> dict[str, Any] | None:
+async def _get_airport_provider_flightapi(hass: HomeAssistant, options: dict[str, Any], iata: str) -> dict[str, Any] | None:
     api_key = str(options.get("flightapi_api_key") or "").strip()
     candidates = await _flightapi_iata_candidates(hass, api_key, iata, "airport")
     if not candidates:
@@ -389,9 +512,12 @@ async def _get_airport_provider(hass: HomeAssistant, options: dict[str, Any], ia
 
     code_keys = ("iata", "iata_code", "code", "fs", "airportCode", "airport_code")
     matched = [c for c in candidates if _code_equals(c, iata, code_keys)]
-    if not matched:
+    c: dict[str, Any] | None = matched[0] if matched else None
+    if c is None and len(candidates) == 1:
+        # Same handling as airlines: prefer a single provider hit over inbuilt fallback.
+        c = candidates[0]
+    if c is None:
         return None
-    c = matched[0]
     tz = _normalize_tz(_pick_str(c, ("tz", "timezone", "timeZone", "timezone_name")))
     data = {
         "iata": iata,
@@ -406,6 +532,116 @@ async def _get_airport_provider(hass: HomeAssistant, options: dict[str, Any], ia
     return await async_get_airport(hass, iata)
 
 
+async def _get_airline_provider_aviationstack(hass: HomeAssistant, options: dict[str, Any], iata: str) -> dict[str, Any] | None:
+    key = str(options.get("aviationstack_access_key") or "").strip()
+    if not key:
+        return None
+    try:
+        provider = AviationstackDirectoryProvider(hass, key)
+        data = await provider.async_get_airline(iata)
+    except Exception as e:
+        _LOGGER.debug("Aviationstack airline directory lookup failed for %s: %s", iata, e)
+        record_api_call(hass, "aviationstack", flow="directory", outcome="error")
+        return None
+    record_api_call(hass, "aviationstack", flow="directory", outcome="success" if data else "error")
+    if not data:
+        return None
+    data["logo_url"] = data.get("logo_url") or data.get("logo") or airline_logo_url(iata)
+    data["source"] = _SOURCE_AVIATIONSTACK
+    await async_set_airline(hass, iata, data)
+    return await async_get_airline(hass, iata)
+
+
+async def _get_airport_provider_aviationstack(hass: HomeAssistant, options: dict[str, Any], iata: str) -> dict[str, Any] | None:
+    key = str(options.get("aviationstack_access_key") or "").strip()
+    if not key:
+        return None
+    try:
+        provider = AviationstackDirectoryProvider(hass, key)
+        data = await provider.async_get_airport(iata)
+    except Exception as e:
+        _LOGGER.debug("Aviationstack airport directory lookup failed for %s: %s", iata, e)
+        record_api_call(hass, "aviationstack", flow="directory", outcome="error")
+        return None
+    record_api_call(hass, "aviationstack", flow="directory", outcome="success" if data else "error")
+    if not data:
+        return None
+    data["source"] = _SOURCE_AVIATIONSTACK
+    data["tz"] = _normalize_tz(data.get("tz"))
+    await async_set_airport(hass, iata, data)
+    return await async_get_airport(hass, iata)
+
+
+async def _get_airline_provider_airlabs(hass: HomeAssistant, options: dict[str, Any], iata: str) -> dict[str, Any] | None:
+    key = str(options.get("airlabs_api_key") or "").strip()
+    if not key:
+        return None
+    try:
+        provider = AirLabsDirectoryProvider(hass, key)
+        data = await provider.async_get_airline(iata)
+    except Exception as e:
+        _LOGGER.debug("AirLabs airline directory lookup failed for %s: %s", iata, e)
+        record_api_call(hass, "airlabs", flow="directory", outcome="error")
+        return None
+    record_api_call(hass, "airlabs", flow="directory", outcome="success" if data else "error")
+    if not data:
+        return None
+    data["logo_url"] = data.get("logo_url") or data.get("logo") or airline_logo_url(iata)
+    data["source"] = _SOURCE_AIRLABS
+    await async_set_airline(hass, iata, data)
+    return await async_get_airline(hass, iata)
+
+
+async def _get_airport_provider_airlabs(hass: HomeAssistant, options: dict[str, Any], iata: str) -> dict[str, Any] | None:
+    key = str(options.get("airlabs_api_key") or "").strip()
+    if not key:
+        return None
+    try:
+        provider = AirLabsDirectoryProvider(hass, key)
+        data = await provider.async_get_airport(iata)
+    except Exception as e:
+        _LOGGER.debug("AirLabs airport directory lookup failed for %s: %s", iata, e)
+        record_api_call(hass, "airlabs", flow="directory", outcome="error")
+        return None
+    record_api_call(hass, "airlabs", flow="directory", outcome="success" if data else "error")
+    if not data:
+        return None
+    data["source"] = _SOURCE_AIRLABS
+    data["tz"] = _normalize_tz(data.get("tz"))
+    await async_set_airport(hass, iata, data)
+    return await async_get_airport(hass, iata)
+
+
+async def _get_airline_provider(hass: HomeAssistant, options: dict[str, Any], iata: str) -> dict[str, Any] | None:
+    for provider in _provider_order(options):
+        if provider == "flightapi":
+            data = await _get_airline_provider_flightapi(hass, options, iata)
+        elif provider == "aviationstack":
+            data = await _get_airline_provider_aviationstack(hass, options, iata)
+        elif provider == "airlabs":
+            data = await _get_airline_provider_airlabs(hass, options, iata)
+        else:
+            data = None
+        if data:
+            return data
+    return None
+
+
+async def _get_airport_provider(hass: HomeAssistant, options: dict[str, Any], iata: str) -> dict[str, Any] | None:
+    for provider in _provider_order(options):
+        if provider == "flightapi":
+            data = await _get_airport_provider_flightapi(hass, options, iata)
+        elif provider == "aviationstack":
+            data = await _get_airport_provider_aviationstack(hass, options, iata)
+        elif provider == "airlabs":
+            data = await _get_airport_provider_airlabs(hass, options, iata)
+        else:
+            data = None
+        if data:
+            return data
+    return None
+
+
 async def get_airport(hass: HomeAssistant, options: dict[str, Any], iata: str) -> dict[str, Any] | None:
     iata = (iata or "").strip().upper()
     if not iata:
@@ -413,15 +649,32 @@ async def get_airport(hass: HomeAssistant, options: dict[str, Any], iata: str) -
 
     mode = _directory_mode(options)
     cached = await async_get_airport(hass, iata)
-    if mode == DIRECTORY_SOURCE_PROVIDER and _is_source(cached, _SOURCE_FLIGHTAPI) and is_fresh(cached, _PROVIDER_CACHE_TTL_DAYS):
-        return cached
+    if mode == DIRECTORY_SOURCE_PROVIDER and _is_provider_source(cached) and is_fresh(cached, _PROVIDER_CACHE_TTL_DAYS):
+        if _is_complete_airport(cached):
+            return cached
+        # Provider cache is fresh but incomplete; backfill missing fields from inbuilt.
+        fallback = await _get_airport_inbuilt(hass, iata)
+        merged = _merge_airport(cached, fallback)
+        merged = await _infer_airport_missing_fields(hass, merged, iata)
+        if merged and merged != cached:
+            await async_set_airport(hass, iata, merged)
+            return await async_get_airport(hass, iata)
+        return merged or cached
     if mode == DIRECTORY_SOURCE_INBUILT and is_fresh(cached, _CACHE_TTL_DAYS) and _is_complete_airport(cached):
         return cached
 
     if mode == DIRECTORY_SOURCE_PROVIDER:
         provider = await _get_airport_provider(hass, options, iata)
         if provider:
-            return provider
+            if _is_complete_airport(provider):
+                return provider
+            fallback = await _get_airport_inbuilt(hass, iata)
+            merged = _merge_airport(provider, fallback)
+            merged = await _infer_airport_missing_fields(hass, merged, iata)
+            if merged and merged != provider:
+                await async_set_airport(hass, iata, merged)
+                return await async_get_airport(hass, iata)
+            return merged or provider
     return await _get_airport_inbuilt(hass, iata)
 
 
@@ -432,7 +685,7 @@ async def get_airline(hass: HomeAssistant, options: dict[str, Any], iata: str) -
 
     mode = _directory_mode(options)
     cached = await async_get_airline(hass, iata)
-    if mode == DIRECTORY_SOURCE_PROVIDER and _is_source(cached, _SOURCE_FLIGHTAPI) and is_fresh(cached, _PROVIDER_CACHE_TTL_DAYS):
+    if mode == DIRECTORY_SOURCE_PROVIDER and _is_provider_source(cached) and is_fresh(cached, _PROVIDER_CACHE_TTL_DAYS):
         return cached
     if mode == DIRECTORY_SOURCE_INBUILT and is_fresh(cached, _CACHE_TTL_DAYS):
         return cached

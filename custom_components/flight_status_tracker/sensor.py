@@ -720,16 +720,25 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
             arr["airport"] = arr_air
 
             def _to_local(ts: Any, tzname: str | None) -> str | None:
-                if not ts or not tzname or not isinstance(ts, str):
+                if not ts or not isinstance(ts, str):
                     return None
                 dt = dt_util.parse_datetime(ts)
                 if not dt:
                     return None
-                if not dt.tzinfo:
-                    # Treat naive timestamps as UTC; schedule/status resolvers should normalize
-                    dt = dt.replace(tzinfo=dt_util.UTC)
+                if tzname:
+                    if not dt.tzinfo:
+                        # Naive schedule values from providers are usually airport-local.
+                        try:
+                            dt = dt.replace(tzinfo=ZoneInfo(tzname))
+                        except Exception:
+                            return dt.isoformat()
+                    try:
+                        return dt.astimezone(ZoneInfo(tzname)).isoformat()
+                    except Exception:
+                        return dt.isoformat()
                 try:
-                    return dt.astimezone(ZoneInfo(tzname)).isoformat()
+                    # No airport timezone known yet: keep provider wall-clock value.
+                    return dt.isoformat()
                 except Exception:
                     return None
 

@@ -11,30 +11,57 @@
       }
     },
     "error": {
-      "min_api_poll_too_low": "Minimum API poll interval must be at least 5 minutes.",
       "threshold_order_invalid": "Far-future threshold must be greater than mid-future threshold.",
-      "interval_below_min_api_poll": "Interval must be greater than or equal to the minimum API poll interval.",
-      "stop_before_arrival_window_end": "Post Arrival stop polling must be at least as long as the Landing window end."
+      "interval_below_min_api_poll": "Interval must be at least 5 minutes for non-critical windows.",
+      "stop_before_arrival_window_end": "Post Arrival stop polling must be at least as long as the Landing window end.",
+      "at_least_one_provider_required": "Select at least one external provider with valid credentials. Local/mock-only configuration is not allowed.",
+      "provider_key_required": "Credentials are required for the selected provider."
     }
   },
   "options": {
+    "error": {
+      "interval_below_min_api_poll": "Interval must be at least 5 minutes for non-critical windows.",
+      "stop_before_arrival_window_end": "Post Arrival stop polling must be at least as long as the Landing window end.",
+      "at_least_one_provider_required": "Select at least one external provider with valid credentials. Local/mock-only configuration is not allowed.",
+      "provider_key_required": "Credentials are required for the selected provider."
+    },
     "step": {
-      "init": {
-        "title": "Flight Status Tracker options",
-        "description": "Select providers and configure the polling schedule.",
+      "mode": {
+        "title": "Provider setup mode",
+        "description": "Choose whether you want a single provider setup or separate providers by function.",
         "data": {
-          "itinerary_providers": "Itinerary providers",
-          "days_ahead": "Days ahead",
-          "include_past_hours": "Include past hours",
-          "max_flights": "Max flights",
-          "merge_tolerance_hours": "Merge tolerance (hours)",
-          "auto_prune_landed": "Auto-remove past flights",
-          "prune_landed_hours": "Remove past flights after (hours)",
-          "auto_remove_after_arrival_minutes": "Auto-remove flight (minutes after arrival)",
+          "provider_mode": "Setup mode"
+        }
+      },
+      "providers": {
+        "title": "Providers",
+        "description": "Choose provider routing for schedule, status, and position.",
+        "data": {
+          "primary_provider": "Primary provider",
+          "enable_position": "Enable position tracking (if supported)",
           "status_provider": "Status provider",
           "schedule_provider": "Schedule provider",
-          "directory_source_mode": "Airline/Airport data source",
-          "min_api_poll_minutes": "Minimum API poll interval (minutes)",
+          "position_provider": "Position provider"
+        }
+      },
+      "credentials": {
+        "title": "Credentials",
+        "description": "Enter API credentials for selected providers.",
+        "data": {
+          "aviationstack_access_key": "Aviationstack API key",
+          "airlabs_api_key": "AirLabs API key",
+          "flightapi_api_key": "FlightAPI.io API key",
+          "opensky_username": "OpenSky username",
+          "opensky_password": "OpenSky password",
+          "fr24_api_key": "Flightradar24 API key",
+          "fr24_sandbox_key": "Flightradar24 sandbox API key",
+          "fr24_use_sandbox": "Use FR24 sandbox"
+        }
+      },
+      "polling": {
+        "title": "Polling windows",
+        "description": "Configure the polling cadence for each flight phase.",
+        "data": {
           "delay_grace_minutes": "Delay grace (minutes)",
           "far_before_dep_threshold_hours": "Far-Future threshold (hours before departure)",
           "far_before_dep_interval_minutes": "Far-Future poll interval (minutes)",
@@ -46,17 +73,27 @@
           "arr_window_pre_minutes": "Landing window starts (minutes before arrival)",
           "arr_window_post_minutes": "Landing window ends (minutes after arrival)",
           "arr_window_interval_minutes": "Landing poll interval (minutes, min 1)",
-          "stop_refresh_after_arrival_minutes": "Post Arrival stop polling (minutes after arrival)",
-          "aviationstack_access_key": "Aviationstack API key",
-          "airlabs_api_key": "AirLabs API key",
-          "flightapi_api_key": "FlightAPI.io API key",
-          "opensky_username": "OpenSky username",
-          "opensky_password": "OpenSky password",
-          "fr24_api_key": "Flightradar24 API key",
-          "fr24_sandbox_key": "Flightradar24 sandbox API key",
-          "fr24_use_sandbox": "Use FR24 sandbox",
-          "fr24_api_version": "FR24 API version"
+          "stop_refresh_after_arrival_minutes": "Post Arrival stop polling (minutes after arrival)"
         }
+      },
+      "list_cleanup": {
+        "title": "Flight list and cleanup",
+        "description": "Configure list horizon and automatic cleanup.",
+        "data": {
+          "days_ahead": "Days ahead",
+          "include_past_hours": "Include past hours",
+          "max_flights": "Max flights",
+          "auto_prune_landed": "Auto-remove past flights",
+          "auto_remove_after_arrival_minutes": "Auto-remove flight (minutes after arrival)"
+        }
+      },
+      "review": {
+        "title": "Review and save",
+        "description": "Mode: {mode}\nSchedule: {schedule}\nStatus: {status}\nPosition: {position}\nPolling (min): Far-Future {far}, Prepare to Travel {prepare}, Take Off {takeoff}, Mid Flight {mid}, Landing {landing}\n\nSubmit to save."
+      },
+      "init": {
+        "title": "Flight Status Tracker options",
+        "description": "This entry now uses a step-by-step wizard."
       }
     }
   }

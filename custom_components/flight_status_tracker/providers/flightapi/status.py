@@ -349,6 +349,12 @@ class FlightAPIStatusProvider:
 
         dep_iata = (dep_obj or {}).get("airportCode")
         arr_iata = (arr_obj or {}).get("airportCode")
+        dep_filter = (flight.get("dep_airport") or flight.get("dep_iata") or "").strip().upper()
+        arr_filter = (flight.get("arr_airport") or flight.get("arr_iata") or "").strip().upper()
+        if dep_filter and dep_iata and dep_iata.strip().upper() != dep_filter:
+            return None
+        if arr_filter and arr_iata and arr_iata.strip().upper() != arr_filter:
+            return None
         dep_tz_from_airport = None
         arr_tz_from_airport = None
 
