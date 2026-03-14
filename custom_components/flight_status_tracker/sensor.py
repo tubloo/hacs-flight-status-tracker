@@ -664,80 +664,36 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
 
             dep_iata = dep_air.get("iata")
             arr_iata = arr_air.get("iata")
-            prev_dep_iata = (prev or {}).get("dep_iata")
-            prev_arr_iata = (prev or {}).get("arr_iata")
-            dep_iata_changed = bool(prev_dep_iata and dep_iata and prev_dep_iata != dep_iata)
-            arr_iata_changed = bool(prev_arr_iata and arr_iata and prev_arr_iata != arr_iata)
 
-            needs_dep = bool(
-                dep_iata
-                and (
-                    dep_iata_changed
-                    or not dep_air.get("name")
-                    or not dep_air.get("city")
-                    or not dep_air.get("tz")
-                )
-            )
+            needs_dep = bool(dep_iata)
             if needs_dep:
                 airport = await get_airport(self.hass, options, dep_air.get("iata"))
                 if airport:
-                    if dep_iata_changed:
-                        if airport.get("name") and dep_air.get("name") != airport.get("name"):
-                            dep_air["name"] = airport.get("name")
-                            updates["dep_airport_name"] = airport.get("name")
-                        if airport.get("city") and dep_air.get("city") != airport.get("city"):
-                            dep_air["city"] = airport.get("city")
-                            updates["dep_airport_city"] = airport.get("city")
-                        if airport.get("tz") and dep_air.get("tz") != airport.get("tz"):
-                            dep_air["tz"] = airport.get("tz")
-                            dep_air.pop("tz_short", None)
-                            updates["dep_airport_tz"] = airport.get("tz")
-                    else:
-                        if not dep_air.get("name") and airport.get("name"):
-                            dep_air["name"] = airport.get("name")
-                            updates["dep_airport_name"] = airport.get("name")
-                        if not dep_air.get("city") and airport.get("city"):
-                            dep_air["city"] = airport.get("city")
-                            updates["dep_airport_city"] = airport.get("city")
-                        if not dep_air.get("tz") and airport.get("tz"):
-                            dep_air["tz"] = airport.get("tz")
-                            dep_air.pop("tz_short", None)
-                            updates["dep_airport_tz"] = airport.get("tz")
+                    if airport.get("name") and dep_air.get("name") != airport.get("name"):
+                        dep_air["name"] = airport.get("name")
+                        updates["dep_airport_name"] = airport.get("name")
+                    if airport.get("city") and dep_air.get("city") != airport.get("city"):
+                        dep_air["city"] = airport.get("city")
+                        updates["dep_airport_city"] = airport.get("city")
+                    if airport.get("tz") and dep_air.get("tz") != airport.get("tz"):
+                        dep_air["tz"] = airport.get("tz")
+                        dep_air.pop("tz_short", None)
+                        updates["dep_airport_tz"] = airport.get("tz")
 
-            needs_arr = bool(
-                arr_iata
-                and (
-                    arr_iata_changed
-                    or not arr_air.get("name")
-                    or not arr_air.get("city")
-                    or not arr_air.get("tz")
-                )
-            )
+            needs_arr = bool(arr_iata)
             if needs_arr:
                 airport = await get_airport(self.hass, options, arr_air.get("iata"))
                 if airport:
-                    if arr_iata_changed:
-                        if airport.get("name") and arr_air.get("name") != airport.get("name"):
-                            arr_air["name"] = airport.get("name")
-                            updates["arr_airport_name"] = airport.get("name")
-                        if airport.get("city") and arr_air.get("city") != airport.get("city"):
-                            arr_air["city"] = airport.get("city")
-                            updates["arr_airport_city"] = airport.get("city")
-                        if airport.get("tz") and arr_air.get("tz") != airport.get("tz"):
-                            arr_air["tz"] = airport.get("tz")
-                            arr_air.pop("tz_short", None)
-                            updates["arr_airport_tz"] = airport.get("tz")
-                    else:
-                        if not arr_air.get("name") and airport.get("name"):
-                            arr_air["name"] = airport.get("name")
-                            updates["arr_airport_name"] = airport.get("name")
-                        if not arr_air.get("city") and airport.get("city"):
-                            arr_air["city"] = airport.get("city")
-                            updates["arr_airport_city"] = airport.get("city")
-                        if not arr_air.get("tz") and airport.get("tz"):
-                            arr_air["tz"] = airport.get("tz")
-                            arr_air.pop("tz_short", None)
-                            updates["arr_airport_tz"] = airport.get("tz")
+                    if airport.get("name") and arr_air.get("name") != airport.get("name"):
+                        arr_air["name"] = airport.get("name")
+                        updates["arr_airport_name"] = airport.get("name")
+                    if airport.get("city") and arr_air.get("city") != airport.get("city"):
+                        arr_air["city"] = airport.get("city")
+                        updates["arr_airport_city"] = airport.get("city")
+                    if airport.get("tz") and arr_air.get("tz") != airport.get("tz"):
+                        arr_air["tz"] = airport.get("tz")
+                        arr_air.pop("tz_short", None)
+                        updates["arr_airport_tz"] = airport.get("tz")
 
             # Persist directory enrichment for manual flights
             if updates and (flight.get("source") or "manual") == "manual":
