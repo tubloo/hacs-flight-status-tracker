@@ -29,6 +29,7 @@ CONF_MIN_API_POLL_MINUTES = "min_api_poll_minutes"
 CONF_DELAY_GRACE_MINUTES = "delay_grace_minutes"
 CONF_FAR_BEFORE_DEP_THRESHOLD_HOURS = "far_before_dep_threshold_hours"
 CONF_FAR_BEFORE_DEP_INTERVAL_MINUTES = "far_before_dep_interval_minutes"
+CONF_PREPARE_TO_TRAVEL_INTERVAL_MINUTES = "prepare_to_travel_interval_minutes"
 CONF_MID_BEFORE_DEP_THRESHOLD_HOURS = "mid_before_dep_threshold_hours"
 CONF_MID_BEFORE_DEP_INTERVAL_MINUTES = "mid_before_dep_interval_minutes"
 CONF_NEAR_BEFORE_DEP_INTERVAL_MINUTES = "near_before_dep_interval_minutes"
@@ -68,6 +69,7 @@ DEFAULT_MIN_API_POLL_MINUTES = 5
 DEFAULT_DELAY_GRACE_MINUTES = 10
 DEFAULT_FAR_BEFORE_DEP_THRESHOLD_HOURS = 6
 DEFAULT_FAR_BEFORE_DEP_INTERVAL_MINUTES = 1440
+DEFAULT_PREPARE_TO_TRAVEL_INTERVAL_MINUTES = 20
 DEFAULT_MID_BEFORE_DEP_THRESHOLD_HOURS = 2
 DEFAULT_MID_BEFORE_DEP_INTERVAL_MINUTES = 30
 DEFAULT_NEAR_BEFORE_DEP_INTERVAL_MINUTES = 10
@@ -130,9 +132,18 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
 
         far_thr = int(options.get(CONF_FAR_BEFORE_DEP_THRESHOLD_HOURS, DEFAULT_FAR_BEFORE_DEP_THRESHOLD_HOURS))
         far_int = int(options.get(CONF_FAR_BEFORE_DEP_INTERVAL_MINUTES, DEFAULT_FAR_BEFORE_DEP_INTERVAL_MINUTES))
-        mid_thr = int(options.get(CONF_MID_BEFORE_DEP_THRESHOLD_HOURS, DEFAULT_MID_BEFORE_DEP_THRESHOLD_HOURS))
-        mid_int = int(options.get(CONF_MID_BEFORE_DEP_INTERVAL_MINUTES, DEFAULT_MID_BEFORE_DEP_INTERVAL_MINUTES))
-        near_int = int(options.get(CONF_NEAR_BEFORE_DEP_INTERVAL_MINUTES, DEFAULT_NEAR_BEFORE_DEP_INTERVAL_MINUTES))
+        prepare_int = int(
+            options.get(
+                CONF_PREPARE_TO_TRAVEL_INTERVAL_MINUTES,
+                options.get(
+                    CONF_NEAR_BEFORE_DEP_INTERVAL_MINUTES,
+                    options.get(
+                        CONF_MID_BEFORE_DEP_INTERVAL_MINUTES,
+                        DEFAULT_PREPARE_TO_TRAVEL_INTERVAL_MINUTES,
+                    ),
+                ),
+            )
+        )
         dep_pre = int(options.get(CONF_DEP_WINDOW_PRE_MINUTES, DEFAULT_DEP_WINDOW_PRE_MINUTES))
         dep_post = int(options.get(CONF_DEP_WINDOW_POST_MINUTES, DEFAULT_DEP_WINDOW_POST_MINUTES))
         dep_int = int(options.get(CONF_DEP_WINDOW_INTERVAL_MINUTES, DEFAULT_DEP_WINDOW_INTERVAL_MINUTES))
@@ -234,6 +245,15 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
                 unit_of_measurement="min",
             )
         )
+        number_minutes_1_120 = selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                min=1,
+                max=120,
+                step=1,
+                mode=selector.NumberSelectorMode.SLIDER,
+                unit_of_measurement="min",
+            )
+        )
         number_minutes_5_240 = selector.NumberSelector(
             selector.NumberSelectorConfig(
                 min=5,
@@ -319,16 +339,14 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Required(CONF_MIN_API_POLL_MINUTES, default=min_poll): number_minutes_5_120,
                 vol.Required(CONF_FAR_BEFORE_DEP_THRESHOLD_HOURS, default=far_thr): number_hours_0_168,
                 vol.Required(CONF_FAR_BEFORE_DEP_INTERVAL_MINUTES, default=far_int): number_minutes_5_1440,
-                vol.Required(CONF_MID_BEFORE_DEP_THRESHOLD_HOURS, default=mid_thr): number_hours_0_168,
-                vol.Required(CONF_MID_BEFORE_DEP_INTERVAL_MINUTES, default=mid_int): number_minutes_5_240,
-                vol.Required(CONF_NEAR_BEFORE_DEP_INTERVAL_MINUTES, default=near_int): number_minutes_5_120,
+                vol.Required(CONF_PREPARE_TO_TRAVEL_INTERVAL_MINUTES, default=prepare_int): number_minutes_5_240,
                 vol.Required(CONF_DEP_WINDOW_PRE_MINUTES, default=dep_pre): number_minutes_0_180,
                 vol.Required(CONF_DEP_WINDOW_POST_MINUTES, default=dep_post): number_minutes_0_180,
-                vol.Required(CONF_DEP_WINDOW_INTERVAL_MINUTES, default=dep_int): number_minutes_5_120,
+                vol.Required(CONF_DEP_WINDOW_INTERVAL_MINUTES, default=dep_int): number_minutes_1_120,
                 vol.Required(CONF_MID_FLIGHT_INTERVAL_MINUTES, default=mid_flight_int): number_minutes_5_240,
                 vol.Required(CONF_ARR_WINDOW_PRE_MINUTES, default=arr_pre): number_minutes_0_180,
                 vol.Required(CONF_ARR_WINDOW_POST_MINUTES, default=arr_post): number_minutes_0_180,
-                vol.Required(CONF_ARR_WINDOW_INTERVAL_MINUTES, default=arr_int): number_minutes_5_240,
+                vol.Required(CONF_ARR_WINDOW_INTERVAL_MINUTES, default=arr_int): number_minutes_1_120,
                 vol.Required(CONF_STOP_REFRESH_AFTER_ARRIVAL_MINUTES, default=stop_after_arr): number_minutes_0_10080,
             }
         )
@@ -379,12 +397,6 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
             if ttl_in < 5:
                 errors[CONF_MIN_API_POLL_MINUTES] = "min_api_poll_too_low"
 
-            far_thr_in = _ival(CONF_FAR_BEFORE_DEP_THRESHOLD_HOURS, DEFAULT_FAR_BEFORE_DEP_THRESHOLD_HOURS)
-            mid_thr_in = _ival(CONF_MID_BEFORE_DEP_THRESHOLD_HOURS, DEFAULT_MID_BEFORE_DEP_THRESHOLD_HOURS)
-            if far_thr_in <= mid_thr_in:
-                errors[CONF_FAR_BEFORE_DEP_THRESHOLD_HOURS] = "threshold_order_invalid"
-                errors[CONF_MID_BEFORE_DEP_THRESHOLD_HOURS] = "threshold_order_invalid"
-
             arr_post_in = _ival(CONF_ARR_WINDOW_POST_MINUTES, DEFAULT_ARR_WINDOW_POST_MINUTES)
             stop_after_arr_in = _ival(
                 CONF_STOP_REFRESH_AFTER_ARRIVAL_MINUTES, DEFAULT_STOP_REFRESH_AFTER_ARRIVAL_MINUTES
@@ -395,11 +407,8 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
             # Intervals must not be below the minimum poll
             interval_fields: Iterable[str] = (
                 CONF_FAR_BEFORE_DEP_INTERVAL_MINUTES,
-                CONF_MID_BEFORE_DEP_INTERVAL_MINUTES,
-                CONF_NEAR_BEFORE_DEP_INTERVAL_MINUTES,
-                CONF_DEP_WINDOW_INTERVAL_MINUTES,
+                CONF_PREPARE_TO_TRAVEL_INTERVAL_MINUTES,
                 CONF_MID_FLIGHT_INTERVAL_MINUTES,
-                CONF_ARR_WINDOW_INTERVAL_MINUTES,
             )
             for k in interval_fields:
                 if _ival(k, 0) < max(5, ttl_in):
@@ -435,16 +444,17 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
             options[CONF_MIN_API_POLL_MINUTES] = max(5, int(user_input[CONF_MIN_API_POLL_MINUTES]))
             options[CONF_FAR_BEFORE_DEP_THRESHOLD_HOURS] = int(user_input[CONF_FAR_BEFORE_DEP_THRESHOLD_HOURS])
             options[CONF_FAR_BEFORE_DEP_INTERVAL_MINUTES] = int(user_input[CONF_FAR_BEFORE_DEP_INTERVAL_MINUTES])
-            options[CONF_MID_BEFORE_DEP_THRESHOLD_HOURS] = int(user_input[CONF_MID_BEFORE_DEP_THRESHOLD_HOURS])
-            options[CONF_MID_BEFORE_DEP_INTERVAL_MINUTES] = int(user_input[CONF_MID_BEFORE_DEP_INTERVAL_MINUTES])
-            options[CONF_NEAR_BEFORE_DEP_INTERVAL_MINUTES] = int(user_input[CONF_NEAR_BEFORE_DEP_INTERVAL_MINUTES])
+            options[CONF_PREPARE_TO_TRAVEL_INTERVAL_MINUTES] = int(user_input[CONF_PREPARE_TO_TRAVEL_INTERVAL_MINUTES])
+            options.pop(CONF_MID_BEFORE_DEP_THRESHOLD_HOURS, None)
+            options.pop(CONF_MID_BEFORE_DEP_INTERVAL_MINUTES, None)
+            options.pop(CONF_NEAR_BEFORE_DEP_INTERVAL_MINUTES, None)
             options[CONF_DEP_WINDOW_PRE_MINUTES] = int(user_input[CONF_DEP_WINDOW_PRE_MINUTES])
             options[CONF_DEP_WINDOW_POST_MINUTES] = int(user_input[CONF_DEP_WINDOW_POST_MINUTES])
-            options[CONF_DEP_WINDOW_INTERVAL_MINUTES] = int(user_input[CONF_DEP_WINDOW_INTERVAL_MINUTES])
+            options[CONF_DEP_WINDOW_INTERVAL_MINUTES] = max(1, int(user_input[CONF_DEP_WINDOW_INTERVAL_MINUTES]))
             options[CONF_MID_FLIGHT_INTERVAL_MINUTES] = int(user_input[CONF_MID_FLIGHT_INTERVAL_MINUTES])
             options[CONF_ARR_WINDOW_PRE_MINUTES] = int(user_input[CONF_ARR_WINDOW_PRE_MINUTES])
             options[CONF_ARR_WINDOW_POST_MINUTES] = int(user_input[CONF_ARR_WINDOW_POST_MINUTES])
-            options[CONF_ARR_WINDOW_INTERVAL_MINUTES] = int(user_input[CONF_ARR_WINDOW_INTERVAL_MINUTES])
+            options[CONF_ARR_WINDOW_INTERVAL_MINUTES] = max(1, int(user_input[CONF_ARR_WINDOW_INTERVAL_MINUTES]))
             options[CONF_STOP_REFRESH_AFTER_ARRIVAL_MINUTES] = int(user_input[CONF_STOP_REFRESH_AFTER_ARRIVAL_MINUTES])
 
             # Status interpretation

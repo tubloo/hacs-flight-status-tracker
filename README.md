@@ -64,7 +64,7 @@ For a detailed walkthrough and troubleshooting, see `docs/guide.md`.
 - **Position provider** is optional and is disabled by default.
 - Airport/airline directory enrichment is handled internally using data files and cached locally (refresh ~monthly).
 - You can force a directory refresh anytime via `button.flight_status_tracker_refresh_directory_data` (your entity_id may vary; check Developer Tools).
-- Status updates use a configurable **time-based polling schedule** (different intervals far from departure vs near departure vs in-flight vs near arrival).
+- Status updates use a configurable **time-based polling schedule** (Far-Future, Prepare to Travel, Take Off, Mid Flight, Landing, and Post Arrival windows).
 
 ## Defaults (when Options are untouched)
 
@@ -132,3 +132,4 @@ If a card is not listed in HACS, add its GitHub repo under **HACS > Frontend > C
 - `v0.3.1`: Performance improvements (less disk I/O for directory cache; less per-flight overhead when scheduling refreshes).
 - `v0.3.2`: Reliability fixes for startup/reload and refresh scheduling (safe rebuild retry on errors, startup manual-flight listener ordering, non-blocking directory warmup/refresh, consistent FR24 rate-limit block keying, and service re-registration/unload cleanup). Also includes schedule lookup ordering fix (mock no longer preempts configured providers) and service docs update (`dep_airport` field for preview/add).
 - `v1.0.0`: Added scheduler watchdog self-healing and per-flight `ui` display block for faster dashboard templates. Watchdog adds diagnostics (`last_rebuild_at`, `next_refresh_at`, `watchdog_last_*`) and auto-kicks rebuild on stale scheduling state without forcing unnecessary API polls.
+- `v1.0.1`: Polling windows simplified to Far-Future, Prepare to Travel, Take Off, Mid Flight, Landing, and Post Arrival. Prepare-to-Travel replaces previous mid/near pre-departure split. Take Off and Landing poll intervals now support a minimum of 1 minute.

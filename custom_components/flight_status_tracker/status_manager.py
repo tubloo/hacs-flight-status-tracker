@@ -215,19 +215,27 @@ def _polling_config(options: dict[str, Any]) -> dict[str, int]:
 
     far_thr_hours = max(0, _opt_int("far_before_dep_threshold_hours", 6))
     far_int_minutes = max(min_poll_minutes, _opt_int("far_before_dep_interval_minutes", 1440))
-    mid_thr_hours = max(0, _opt_int("mid_before_dep_threshold_hours", 2))
-    mid_int_minutes = max(min_poll_minutes, _opt_int("mid_before_dep_interval_minutes", 30))
-    near_int_minutes = max(min_poll_minutes, _opt_int("near_before_dep_interval_minutes", 10))
+    prepare_to_travel_raw = options.get(
+        "prepare_to_travel_interval_minutes",
+        options.get("near_before_dep_interval_minutes", options.get("mid_before_dep_interval_minutes", 20)),
+    )
+    try:
+        prepare_to_travel_minutes = int(prepare_to_travel_raw)
+    except Exception:
+        prepare_to_travel_minutes = 20
+    prepare_to_travel_minutes = max(min_poll_minutes, prepare_to_travel_minutes)
 
     dep_pre_minutes = max(0, _opt_int("dep_window_pre_minutes", 10))
     dep_post_minutes = max(0, _opt_int("dep_window_post_minutes", 10))
-    dep_int_minutes = max(min_poll_minutes, _opt_int("dep_window_interval_minutes", 10))
+    # Take Off window can be as low as 1 minute regardless of global minimum.
+    dep_int_minutes = max(1, _opt_int("dep_window_interval_minutes", 10))
 
     mid_flight_int_minutes = max(min_poll_minutes, _opt_int("mid_flight_interval_minutes", 30))
 
     arr_pre_minutes = max(0, _opt_int("arr_window_pre_minutes", 10))
     arr_post_minutes = max(0, _opt_int("arr_window_post_minutes", 10))
-    arr_int_minutes = max(min_poll_minutes, _opt_int("arr_window_interval_minutes", 15))
+    # Landing window can be as low as 1 minute regardless of global minimum.
+    arr_int_minutes = max(1, _opt_int("arr_window_interval_minutes", 15))
 
     stop_after_arr_minutes = max(0, _opt_int("stop_refresh_after_arrival_minutes", 60))
 
@@ -236,16 +244,14 @@ def _polling_config(options: dict[str, Any]) -> dict[str, int]:
         "min_poll_seconds": min_poll_seconds,
         "far_thr_hours": far_thr_hours,
         "far_int_seconds": max(min_poll_seconds, far_int_minutes * 60),
-        "mid_thr_hours": mid_thr_hours,
-        "mid_int_seconds": max(min_poll_seconds, mid_int_minutes * 60),
-        "near_int_seconds": max(min_poll_seconds, near_int_minutes * 60),
+        "prepare_to_travel_int_seconds": max(min_poll_seconds, prepare_to_travel_minutes * 60),
         "dep_pre_minutes": dep_pre_minutes,
         "dep_post_minutes": dep_post_minutes,
-        "dep_int_seconds": max(min_poll_seconds, dep_int_minutes * 60),
+        "dep_int_seconds": max(60, dep_int_minutes * 60),
         "mid_flight_int_seconds": max(min_poll_seconds, mid_flight_int_minutes * 60),
         "arr_pre_minutes": arr_pre_minutes,
         "arr_post_minutes": arr_post_minutes,
-        "arr_int_seconds": max(min_poll_seconds, arr_int_minutes * 60),
+        "arr_int_seconds": max(60, arr_int_minutes * 60),
         "stop_after_arr_minutes": stop_after_arr_minutes,
     }
 
@@ -267,7 +273,6 @@ def compute_next_refresh_seconds(
 
     ttl_seconds = cfg["min_poll_seconds"]
     far_thr_hours = cfg["far_thr_hours"]
-    mid_thr_hours = cfg["mid_thr_hours"]
     dep_pre_minutes = cfg["dep_pre_minutes"]
     dep_post_minutes = cfg["dep_post_minutes"]
     arr_pre_minutes = cfg["arr_pre_minutes"]
@@ -289,21 +294,21 @@ def compute_next_refresh_seconds(
     if state in ("arrived", "cancelled", "canceled", "landed"):
         return None
 
-    # Departure focus window
+    # Take Off window
     if dep:
         dep_window_start = dep - timedelta(minutes=dep_pre_minutes)
         dep_window_end = dep + timedelta(minutes=dep_post_minutes)
         if dep_window_start <= now <= dep_window_end:
             return max(ttl_seconds, cfg["dep_int_seconds"])
 
-    # Arrival focus window
+    # Landing window
     if arr:
         arr_window_start = arr - timedelta(minutes=arr_pre_minutes)
         arr_window_end = arr + timedelta(minutes=arr_post_minutes)
         if arr_window_start <= now <= arr_window_end:
             return max(ttl_seconds, cfg["arr_int_seconds"])
 
-    # Mid-flight (between end of departure window and start of arrival window)
+    # Mid Flight (between end of Take Off window and start of Landing window)
     if dep and arr:
         mid_start = dep + timedelta(minutes=dep_post_minutes)
         mid_end = arr - timedelta(minutes=arr_pre_minutes)
@@ -314,9 +319,7 @@ def compute_next_refresh_seconds(
         delta = dep - now
         if delta > timedelta(hours=far_thr_hours):
             return max(ttl_seconds, cfg["far_int_seconds"])
-        if delta > timedelta(hours=mid_thr_hours):
-            return max(ttl_seconds, cfg["mid_int_seconds"])
-        return max(ttl_seconds, cfg["near_int_seconds"])
+        return max(ttl_seconds, cfg["prepare_to_travel_int_seconds"])
 
     # Fallback: periodic but not frequent
     return max(ttl_seconds, 60 * 60)

@@ -89,21 +89,19 @@ Instead of polling constantly, the integration uses a time-based schedule:
 The schedule is configured using these options:
 
 - Minimum API poll interval (minutes): a safety floor; polling will never be faster than this (minimum 5 minutes).
-- Far-future threshold (hours before departure): when “far future” starts.
-- Far-future poll interval (minutes): how often to poll when far in the future.
-- Mid-future threshold (hours before departure): when to switch from far-future to mid-future.
-- Mid-future poll interval (minutes): how often to poll in mid-future.
-- Near-departure poll interval (minutes): how often to poll in the last part before departure.
-- Departure focus starts/ends (minutes before/after departure) + departure focus poll interval: extra-frequent polling around takeoff.
-- Mid-flight poll interval (minutes): polling between the departure focus window and the arrival focus window.
-- Arrival focus starts/ends (minutes before/after arrival) + arrival focus poll interval: extra-frequent polling around landing.
-- Stop polling (minutes after arrival): hard stop for status polling after arrival.
+- Far-Future threshold (hours before departure): when Far-Future starts.
+- Far-Future poll interval (minutes): how often to poll in Far-Future.
+- Prepare to Travel poll interval (minutes): how often to poll before the Take Off window starts.
+- Take Off window starts/ends (minutes before/after departure) + Take Off poll interval: extra-frequent polling around takeoff.
+- Mid Flight poll interval (minutes): polling between the Take Off window and the Landing window.
+- Landing window starts/ends (minutes before/after arrival) + Landing poll interval: extra-frequent polling around landing.
+- Post Arrival stop polling (minutes): hard stop for status polling after arrival.
 
 Validation rules (to prevent accidental over-polling):
 - Minimum API poll interval must be **at least 5 minutes**.
-- All poll intervals must be **greater than or equal** to the minimum API poll interval.
-- Far-future threshold must be **greater than** the mid-future threshold.
-- Stop polling (minutes after arrival) must be **at least** the arrival focus “minutes after arrival”.
+- Far-Future / Prepare to Travel / Mid Flight poll intervals must be **greater than or equal** to the minimum API poll interval.
+- Take Off and Landing poll intervals may be set as low as **1 minute**.
+- Post Arrival stop polling (minutes) must be **at least** the Landing window “minutes after arrival”.
 
 Directory caching is handled internally and refreshed about monthly.
 
@@ -154,6 +152,12 @@ Exact refresh intervals depend on your configured polling schedule and minimum A
 - Added scheduler watchdog self-healing for stale/missed scheduling state.
 - Added per-flight `ui` display block so dashboards can use precomputed backend values and reduce heavy template work.
 - Watchdog diagnostics are now exposed in flight sensor attributes (`last_rebuild_at`, `next_refresh_at`, `watchdog_last_*`).
+
+### v1.0.1
+
+- Polling windows renamed/simplified to: Far-Future, Prepare to Travel, Take Off, Mid Flight, Landing, Post Arrival.
+- Prepare to Travel now replaces the previous mid/near pre-departure split.
+- Take Off and Landing poll intervals now allow a minimum of 1 minute.
 
 ## Storage / Data
 
