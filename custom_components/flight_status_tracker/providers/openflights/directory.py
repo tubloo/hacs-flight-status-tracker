@@ -17,6 +17,35 @@ _AIRPORTS_CACHE_KEY = "openflights_airports_cache"
 _AIRLINES_CACHE_KEY = "openflights_airlines_cache"
 
 
+def _airport_score(item: dict[str, Any]) -> int:
+    score = 0
+    if item.get("tz"):
+        score += 2
+    if item.get("icao"):
+        score += 1
+    if item.get("name"):
+        score += 1
+    if item.get("city"):
+        score += 1
+    return score
+
+
+def _select_airport_record(records: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not records:
+        return None
+    best = max(records, key=_airport_score)
+    out = dict(best)
+
+    names = {str(r.get("name") or "").strip().lower() for r in records if str(r.get("name") or "").strip()}
+    cities = {str(r.get("city") or "").strip().lower() for r in records if str(r.get("city") or "").strip()}
+    if len(names) > 1 or len(cities) > 1:
+        # Ambiguous IATA in source; avoid forcing a possibly-wrong label.
+        out["name"] = None
+        out["city"] = None
+        out["ambiguous"] = True
+    return out
+
+
 async def _get_openflights_airports_index(
     hass: HomeAssistant,
     url: str,
@@ -36,7 +65,7 @@ async def _get_openflights_airports_index(
     except Exception:
         return None
 
-    index: dict[str, dict[str, Any]] = {}
+    by_iata: dict[str, list[dict[str, Any]]] = {}
     try:
         reader = csv.reader(StringIO(text))
         for row in reader:
@@ -55,7 +84,7 @@ async def _get_openflights_airports_index(
                 tz = "Asia/Kolkata"
             lat = (row[6] or "").strip()
             lon = (row[7] or "").strip()
-            index[iata] = {
+            record = {
                 "iata": iata,
                 "icao": (row[5] or "").strip() or None,
                 "name": (row[1] or "").strip() or None,
@@ -66,8 +95,16 @@ async def _get_openflights_airports_index(
                 "lon": lon or None,
                 "source": "openflights",
             }
+            by_iata.setdefault(iata, []).append(record)
     except Exception:
         return None
+
+    index: dict[str, dict[str, Any]] = {}
+    for iata, records in by_iata.items():
+        chosen = _select_airport_record(records)
+        if not chosen:
+            continue
+        index[iata] = chosen
 
     cache[_AIRPORTS_CACHE_KEY] = {"index": index, "url": url}
     return index
