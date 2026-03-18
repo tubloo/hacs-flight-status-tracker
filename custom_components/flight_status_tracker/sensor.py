@@ -35,7 +35,7 @@ SCHEMA_VERSION = 3
 _LOGGER = logging.getLogger(__name__)
 _DIR_ENRICH_STATE_KEY = "dir_enrich_state"
 _RECORDER_ATTR_MAX_BYTES = 16_384
-_RECORDER_ATTR_TARGET_BYTES = 15_000
+_RECORDER_ATTR_TARGET_BYTES = 16_000
 
 
 def _dir_enrich_state(hass: HomeAssistant) -> dict[str, dict[str, Any]]:
@@ -454,23 +454,48 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
         return {
             "flight_key": flight.get("flight_key"),
             "source": flight.get("source"),
+            "editable": flight.get("editable"),
             "airline_code": flight.get("airline_code"),
             "flight_number": flight.get("flight_number"),
+            "airline_name": flight.get("airline_name"),
+            "airline_logo_url": flight.get("airline_logo_url"),
+            "aircraft_type": flight.get("aircraft_type"),
+            "duration_minutes": flight.get("duration_minutes"),
+            "travellers": flight.get("travellers"),
             "status_state": flight.get("status_state"),
             "status_label": flight.get("status_label"),
             "delay_status": flight.get("delay_status"),
             "delay_minutes": flight.get("delay_minutes"),
+            "ui": flight.get("ui") if isinstance(flight.get("ui"), dict) else {},
             "dep": {
-                "airport": {"iata": dep_air.get("iata")},
+                "airport": {
+                    "iata": dep_air.get("iata"),
+                    "name": dep_air.get("name"),
+                    "city": dep_air.get("city"),
+                    "tz": dep_air.get("tz"),
+                    "tz_short": dep_air.get("tz_short"),
+                },
                 "scheduled": dep.get("scheduled") if isinstance(dep, dict) else None,
                 "estimated": dep.get("estimated") if isinstance(dep, dict) else None,
                 "actual": dep.get("actual") if isinstance(dep, dict) else None,
+                "scheduled_local": dep.get("scheduled_local") if isinstance(dep, dict) else None,
+                "estimated_local": dep.get("estimated_local") if isinstance(dep, dict) else None,
+                "actual_local": dep.get("actual_local") if isinstance(dep, dict) else None,
             },
             "arr": {
-                "airport": {"iata": arr_air.get("iata")},
+                "airport": {
+                    "iata": arr_air.get("iata"),
+                    "name": arr_air.get("name"),
+                    "city": arr_air.get("city"),
+                    "tz": arr_air.get("tz"),
+                    "tz_short": arr_air.get("tz_short"),
+                },
                 "scheduled": arr.get("scheduled") if isinstance(arr, dict) else None,
                 "estimated": arr.get("estimated") if isinstance(arr, dict) else None,
                 "actual": arr.get("actual") if isinstance(arr, dict) else None,
+                "scheduled_local": arr.get("scheduled_local") if isinstance(arr, dict) else None,
+                "estimated_local": arr.get("estimated_local") if isinstance(arr, dict) else None,
+                "actual_local": arr.get("actual_local") if isinstance(arr, dict) else None,
             },
         }
 
