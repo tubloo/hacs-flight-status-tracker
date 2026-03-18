@@ -6,7 +6,7 @@
 - **Directory cache**: `directory_store.py` stores airports/airlines with TTL.
 - **Schedule lookup**: `schedule_lookup.py` enriches minimal inputs using provider APIs.
 - **Status**: `status_manager.py` applies cached status and schedules smart refreshes.
-- **Sensor**: `sensor.py` exposes the unified flight list in attributes.
+- **Sensor**: `sensor.py` keeps the canonical unified flight list in-memory (`hass.data`) and exposes recorder-safe attributes (auto compact/truncate when needed).
 - **Refresh now**: `flight_status_tracker.refresh_now` triggers an immediate rebuild.
 - **Auto prune**: optional removal of landed/cancelled manual flights in `sensor.py`.
 

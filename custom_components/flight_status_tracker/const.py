@@ -7,6 +7,7 @@ from __future__ import annotations
 
 DOMAIN = "flight_status_tracker"
 STORAGE_KEY_DIRECTORY = f"{DOMAIN}.directory_cache"
+DATA_UPCOMING_FLIGHTS = "upcoming_flights"
 
 # Platforms
 PLATFORMS: list[str] = ["sensor", "binary_sensor", "select", "button", "text", "date"]

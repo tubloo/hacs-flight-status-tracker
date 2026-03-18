@@ -10,6 +10,7 @@ from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .const import EVENT_UPDATED, SIGNAL_MANUAL_FLIGHTS_UPDATED
+from .selected import get_upcoming_flights
 
 SENSOR_ENTITY_ID = "sensor.flight_status_tracker_upcoming_flights"
 
@@ -65,8 +66,7 @@ class FlightDashboardRemoveFlightSelect(SelectEntity):
             self._unsub_dispatcher = None
 
     async def _refresh_options(self) -> None:
-        st = self.hass.states.get(SENSOR_ENTITY_ID)
-        flights = (st.attributes.get("flights") if st else None) or []
+        flights = get_upcoming_flights(self.hass)
 
         opts = [_option_for_flight(f) for f in flights if isinstance(f, dict) and f.get("flight_key")]
         if not opts:
@@ -122,8 +122,7 @@ class FlightDashboardSelectedFlightSelect(SelectEntity):
             self._unsub_dispatcher = None
 
     async def _refresh_options(self) -> None:
-        st = self.hass.states.get(SENSOR_ENTITY_ID)
-        flights = (st.attributes.get("flights") if st else None) or []
+        flights = get_upcoming_flights(self.hass)
 
         opts = [_option_for_flight(f) for f in flights if isinstance(f, dict) and f.get("flight_key")]
         if not opts:

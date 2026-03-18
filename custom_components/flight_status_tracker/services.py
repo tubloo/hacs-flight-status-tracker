@@ -31,6 +31,7 @@ from .const import (
     SIGNAL_MANUAL_FLIGHTS_UPDATED,
 )
 from .manual_store import async_add_manual_flight, async_remove_manual_flight, async_clear_manual_flights
+from .selected import get_upcoming_flights
 from .status_manager import clear_status_cache
 
 _LOGGER = logging.getLogger(__name__)
@@ -147,9 +148,7 @@ async def async_register_services(hass: HomeAssistant, _options_provider: Any | 
         data = PRUNE_SCHEMA(dict(call.data))
         hours = int(data.get("hours", 0))
         cutoff = dt_util.utcnow() - timedelta(hours=hours)
-
-        st = hass.states.get("sensor.flight_status_tracker_upcoming_flights")
-        flights = (st.attributes.get("flights") if st else None) or []
+        flights = get_upcoming_flights(hass)
 
         def _dt_utc(val: str, tzname: str | None) -> Any:
             dt = dt_util.parse_datetime(val) if isinstance(val, str) else None

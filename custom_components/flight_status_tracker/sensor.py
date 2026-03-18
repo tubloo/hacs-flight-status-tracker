@@ -5,6 +5,7 @@ Sensor rebuilds automatically when manual flights change (dispatcher signal).
 from __future__ import annotations
 
 from datetime import timedelta
+import json
 import logging
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
@@ -16,7 +17,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.event import async_track_point_in_utc_time, async_track_time_interval, async_track_state_change_event
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, SIGNAL_MANUAL_FLIGHTS_UPDATED, SIGNAL_API_METRICS_UPDATED, EVENT_UPDATED
+from .const import DATA_UPCOMING_FLIGHTS, DOMAIN, SIGNAL_MANUAL_FLIGHTS_UPDATED, SIGNAL_API_METRICS_UPDATED, EVENT_UPDATED
 from .coordinator_agg import merge_segments
 from .providers.manual.itinerary import ManualItineraryProvider
 from .manual_store import async_remove_manual_flight, async_update_manual_flight
@@ -33,6 +34,8 @@ from .api_metrics import get_api_metrics_snapshot, record_api_call
 SCHEMA_VERSION = 3
 _LOGGER = logging.getLogger(__name__)
 _DIR_ENRICH_STATE_KEY = "dir_enrich_state"
+_RECORDER_ATTR_MAX_BYTES = 16_384
+_RECORDER_ATTR_TARGET_BYTES = 15_000
 
 
 def _dir_enrich_state(hass: HomeAssistant) -> dict[str, dict[str, Any]]:
@@ -423,6 +426,7 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
         sensors = self.hass.data.get(DOMAIN, {}).get("upcoming_sensors") or {}
         if isinstance(sensors, dict):
             sensors.pop(self.entry.entry_id, None)
+        self.hass.data.setdefault(DOMAIN, {}).pop(DATA_UPCOMING_FLIGHTS, None)
 
     @property
     def native_value(self) -> str:
@@ -431,17 +435,75 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        return {
+        attrs = {
             "schema_version": SCHEMA_VERSION,
-            "schema_doc": SCHEMA_DOC,
-            "schema_example": SCHEMA_EXAMPLE,
-            "flights": self._flights,
+            "flights_total": len(self._flights),
             "last_rebuild_at": self._last_rebuild_at.isoformat() if self._last_rebuild_at else None,
             "next_refresh_at": self._next_refresh_at.isoformat() if self._next_refresh_at else None,
             "last_rebuild_error": self._last_rebuild_error,
             "watchdog_last_check_at": self._watchdog_last_check_at.isoformat() if self._watchdog_last_check_at else None,
             "watchdog_last_kick_at": self._watchdog_last_kick_at.isoformat() if self._watchdog_last_kick_at else None,
         }
+        return self._build_recorder_safe_attributes(attrs)
+
+    def _flight_attr_projection(self, flight: dict[str, Any]) -> dict[str, Any]:
+        dep = flight.get("dep") or {}
+        arr = flight.get("arr") or {}
+        dep_air = (dep.get("airport") or {}) if isinstance(dep, dict) else {}
+        arr_air = (arr.get("airport") or {}) if isinstance(arr, dict) else {}
+        return {
+            "flight_key": flight.get("flight_key"),
+            "source": flight.get("source"),
+            "airline_code": flight.get("airline_code"),
+            "flight_number": flight.get("flight_number"),
+            "status_state": flight.get("status_state"),
+            "status_label": flight.get("status_label"),
+            "delay_status": flight.get("delay_status"),
+            "delay_minutes": flight.get("delay_minutes"),
+            "dep": {
+                "airport": {"iata": dep_air.get("iata")},
+                "scheduled": dep.get("scheduled") if isinstance(dep, dict) else None,
+                "estimated": dep.get("estimated") if isinstance(dep, dict) else None,
+                "actual": dep.get("actual") if isinstance(dep, dict) else None,
+            },
+            "arr": {
+                "airport": {"iata": arr_air.get("iata")},
+                "scheduled": arr.get("scheduled") if isinstance(arr, dict) else None,
+                "estimated": arr.get("estimated") if isinstance(arr, dict) else None,
+                "actual": arr.get("actual") if isinstance(arr, dict) else None,
+            },
+        }
+
+    def _attr_payload_size(self, attrs: dict[str, Any]) -> int:
+        try:
+            return len(json.dumps(attrs, ensure_ascii=True, separators=(",", ":"), default=str).encode("utf-8"))
+        except Exception:
+            return _RECORDER_ATTR_MAX_BYTES + 1
+
+    def _build_recorder_safe_attributes(self, base_attrs: dict[str, Any]) -> dict[str, Any]:
+        full_attrs = dict(base_attrs)
+        full_attrs["flights"] = self._flights
+        full_attrs["flights_compact"] = False
+        full_attrs["flights_truncated"] = False
+        if self._attr_payload_size(full_attrs) <= _RECORDER_ATTR_TARGET_BYTES:
+            return full_attrs
+
+        compact = [self._flight_attr_projection(f) for f in self._flights if isinstance(f, dict)]
+        compact_attrs = dict(base_attrs)
+        compact_attrs["flights"] = compact
+        compact_attrs["flights_compact"] = True
+        compact_attrs["flights_truncated"] = False
+        if self._attr_payload_size(compact_attrs) <= _RECORDER_ATTR_TARGET_BYTES:
+            return compact_attrs
+
+        trimmed = list(compact)
+        while trimmed and self._attr_payload_size({**compact_attrs, "flights": trimmed}) > _RECORDER_ATTR_TARGET_BYTES:
+            trimmed.pop()
+
+        compact_attrs["flights"] = trimmed
+        compact_attrs["flights_truncated"] = len(trimmed) < len(compact)
+        compact_attrs["flights_truncated_count"] = max(0, len(compact) - len(trimmed))
+        return compact_attrs
 
     async def _run_rebuild_safe(self, reason: str) -> None:
         """Run rebuild and ensure we always retry after an unexpected failure."""
@@ -783,6 +845,7 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
             flight["ui"] = _build_ui_block(flight, now, options)
 
         self._flights = flights
+        self.hass.data.setdefault(DOMAIN, {})[DATA_UPCOMING_FLIGHTS] = list(flights)
         self.async_write_ha_state()
         # Notify selects/binary sensors even if state didn't change
         self.hass.bus.async_fire(EVENT_UPDATED)

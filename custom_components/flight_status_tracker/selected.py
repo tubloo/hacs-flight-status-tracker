@@ -5,6 +5,7 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant
 
+from .const import DATA_UPCOMING_FLIGHTS, DOMAIN
 
 UPCOMING_SENSOR = "sensor.flight_status_tracker_upcoming_flights"
 SELECT_ENTITY_ID = "select.flight_status_tracker_selected_flight"
@@ -18,9 +19,19 @@ def _extract_flight_key(option: str | None) -> str:
     return option.split(" | ", 1)[0].strip()
 
 
-def get_selected_flight(hass: HomeAssistant) -> dict[str, Any] | None:
+def get_upcoming_flights(hass: HomeAssistant) -> list[dict[str, Any]]:
+    domain_data = hass.data.get(DOMAIN, {})
+    cached = domain_data.get(DATA_UPCOMING_FLIGHTS) if isinstance(domain_data, dict) else None
+    if isinstance(cached, list):
+        return [f for f in cached if isinstance(f, dict)]
+
     st = hass.states.get(UPCOMING_SENSOR)
     flights = (st.attributes.get("flights") if st else None) or []
+    return [f for f in flights if isinstance(f, dict)]
+
+
+def get_selected_flight(hass: HomeAssistant) -> dict[str, Any] | None:
+    flights = get_upcoming_flights(hass)
 
     sel = hass.states.get(SELECT_ENTITY_ID)
     key = _extract_flight_key(sel.state if sel else None)

@@ -25,6 +25,7 @@ from .ui_inputs_store import (
     async_load_inputs,
 )
 from .directory import async_refresh_builtin_airlines_cache_force, async_refresh_builtin_airports_cache_force
+from .selected import get_upcoming_flights
 
 SELECT_ENTITY_ID = "select.flight_status_tracker_remove_flight"
 UPCOMING_SENSOR = "sensor.flight_status_tracker_upcoming_flights"
@@ -48,10 +49,7 @@ def _extract_flight_key(selected: str) -> str:
 
 
 def _is_visible_in_upcoming(hass: HomeAssistant, flight_key: str) -> bool:
-    st = hass.states.get(UPCOMING_SENSOR)
-    if not st:
-        return False
-    flights = st.attributes.get("flights") or []
+    flights = get_upcoming_flights(hass)
     return any(isinstance(f, dict) and f.get("flight_key") == flight_key for f in flights)
 
 
