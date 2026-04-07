@@ -15,7 +15,8 @@ Flight Status Tracker tracks upcoming flights in Home Assistant:
 
 Common entities you will use in dashboards:
 
-- Flight list: `sensor.flight_status_tracker_upcoming_flights` (attribute `flights`)
+- Flight list summary: `sensor.flight_status_tracker_upcoming_flights`
+- Per-flight entities: dynamic `sensor.*` entities with attribute `flight_key` (entity_id can vary)
 - Add/Preview: `sensor.flight_status_tracker_add_preview` (attribute `preview`)
 - Add inputs:
   - `text.flight_status_tracker_add_flight_airline`
@@ -42,7 +43,7 @@ Note: Home Assistant also creates `update.flight_status_tracker_update` (normal 
 2. Press `button.flight_status_tracker_preview_from_inputs`.
 3. Confirm the preview in `sensor.flight_status_tracker_add_preview` looks correct.
 4. Press `button.flight_status_tracker_confirm_add_preview` to save the flight.
-5. The flight appears in `sensor.flight_status_tracker_upcoming_flights`.
+5. The flight appears as a per-flight entity (dynamic `sensor.*` with attribute `flight_key`) and is counted in `sensor.flight_status_tracker_upcoming_flights`.
 
 ## Providers
 

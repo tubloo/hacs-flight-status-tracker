@@ -5,12 +5,14 @@ Sensor rebuilds automatically when manual flights change (dispatcher signal).
 from __future__ import annotations
 
 from datetime import timedelta
-import json
+import hashlib
+import inspect
 import logging
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
@@ -34,8 +36,7 @@ from .api_metrics import get_api_metrics_snapshot, record_api_call
 SCHEMA_VERSION = 3
 _LOGGER = logging.getLogger(__name__)
 _DIR_ENRICH_STATE_KEY = "dir_enrich_state"
-_RECORDER_ATTR_MAX_BYTES = 16_384
-_RECORDER_ATTR_TARGET_BYTES = 16_000
+_FLIGHT_ENTITY_STATE_KEY = "flight_entities"
 
 
 def _dir_enrich_state(hass: HomeAssistant) -> dict[str, dict[str, Any]]:
@@ -360,7 +361,7 @@ WATCHDOG_KICK_DEBOUNCE = timedelta(minutes=5)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities) -> None:
-    upcoming = FlightDashboardUpcomingFlightsSensor(hass, entry)
+    upcoming = FlightDashboardUpcomingFlightsSensor(hass, entry, async_add_entities)
     entities = [
         upcoming,
         FlightDashboardSelectedFlightSensor(hass, entry),
@@ -378,15 +379,111 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities) -> N
     hass.data.setdefault(DOMAIN, {}).setdefault("upcoming_sensors", {})[entry.entry_id] = upcoming
 
 
+def _flight_entity_slug(flight_key: str) -> str:
+    base = "".join(ch.lower() if ch.isalnum() else "_" for ch in (flight_key or "").strip())
+    while "__" in base:
+        base = base.replace("__", "_")
+    base = base.strip("_")[:48] or "flight"
+    digest = hashlib.sha1((flight_key or "").encode("utf-8")).hexdigest()[:8]
+    return f"{base}_{digest}"
+
+
+class FlightDashboardFlightSensor(SensorEntity):
+    _attr_icon = "mdi:airplane"
+
+    def __init__(self, hass: HomeAssistant, entry, flight_key: str) -> None:
+        self.hass = hass
+        self.entry = entry
+        self._flight_key = flight_key
+        slug = _flight_entity_slug(flight_key)
+        self._attr_unique_id = f"{DOMAIN}_flight_{entry.entry_id}_{slug}"
+        self._attr_suggested_object_id = f"{DOMAIN}_flight_{slug}"
+        self._flight: dict[str, Any] | None = None
+        self._attr_available = False
+
+    @property
+    def name(self) -> str:
+        f = self._flight or {}
+        code = (f.get("airline_code") or "").strip()
+        number = (f.get("flight_number") or "").strip()
+        dep = (f.get("dep") or {})
+        arr = (f.get("arr") or {})
+        dep_iata = (((dep.get("airport") or {}).get("iata")) or "").strip().upper()
+        arr_iata = (((arr.get("airport") or {}).get("iata")) or "").strip().upper()
+        dep_ts = dep.get("scheduled") or dep.get("estimated") or dep.get("actual")
+        dep_dt = _parse_dt(dep_ts) if isinstance(dep_ts, str) else None
+        dep_date = dep_dt.strftime("%d-%b") if dep_dt else ""
+
+        flight_label = f"{code} {number}".strip() if (code or number) else self._flight_key
+        route_label = f"{dep_iata}-{arr_iata}" if dep_iata and arr_iata else ""
+
+        parts = [f"Flight {flight_label}"]
+        if route_label:
+            parts.append(route_label)
+        if dep_date:
+            parts.append(dep_date)
+        return ", ".join(parts)
+
+    @property
+    def native_value(self) -> str:
+        if not self._flight:
+            return "unknown"
+        ui = self._flight.get("ui") or {}
+        return str(ui.get("state_label") or self._flight.get("status_state") or "unknown")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        f = self._flight or {}
+        dep = f.get("dep") or {}
+        arr = f.get("arr") or {}
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "flight_key": self._flight_key,
+            "airline_code": f.get("airline_code"),
+            "flight_number": f.get("flight_number"),
+            "airline_name": f.get("airline_name"),
+            "airline_logo_url": f.get("airline_logo_url"),
+            "aircraft_type": f.get("aircraft_type"),
+            "source": f.get("source"),
+            "editable": f.get("editable"),
+            "status_state": f.get("status_state"),
+            "delay_status": f.get("delay_status"),
+            "delay_minutes": f.get("delay_minutes"),
+            "duration_minutes": f.get("duration_minutes"),
+            "travellers": f.get("travellers") or [],
+            "notes": f.get("notes"),
+            "dep_scheduled": dep.get("scheduled"),
+            "arr_scheduled": arr.get("scheduled"),
+            "dep": dep,
+            "arr": arr,
+            "ui": f.get("ui") if isinstance(f.get("ui"), dict) else {},
+            "flight": f,
+        }
+
+    async def async_added_to_hass(self) -> None:
+        # Ensure newly created dynamic entities publish their initial state.
+        if self._flight is not None:
+            self.async_write_ha_state()
+
+    @callback
+    def async_set_flight(self, flight: dict[str, Any] | None, *, write_state: bool = True) -> None:
+        self._flight = flight if isinstance(flight, dict) else None
+        self._attr_available = self._flight is not None
+        if write_state:
+            self.async_write_ha_state()
+
+
 class FlightDashboardUpcomingFlightsSensor(SensorEntity):
     _attr_name = "Flight Status Tracker Upcoming Flights"
     _attr_icon = "mdi:airplane-clock"
 
-    def __init__(self, hass: HomeAssistant, entry) -> None:
+    def __init__(self, hass: HomeAssistant, entry, async_add_entities_cb: Callable[[list[SensorEntity]], None]) -> None:
         self.hass = hass
         self.entry = entry
+        self._async_add_entities_cb = async_add_entities_cb
         self._attr_unique_id = f"{DOMAIN}_upcoming_flights"
         self._flights: list[dict[str, Any]] = []
+        self._flight_entities: dict[str, FlightDashboardFlightSensor] = {}
         self._unsub: Callable[[], None] | None = None
         self._next_refresh_unsub: Callable[[], None] | None = None
         self._watchdog_unsub: Callable[[], None] | None = None
@@ -435,100 +532,57 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        attrs = {
+        return {
             "schema_version": SCHEMA_VERSION,
             "flights_total": len(self._flights),
+            "flight_keys": [f.get("flight_key") for f in self._flights if isinstance(f, dict) and f.get("flight_key")],
             "last_rebuild_at": self._last_rebuild_at.isoformat() if self._last_rebuild_at else None,
             "next_refresh_at": self._next_refresh_at.isoformat() if self._next_refresh_at else None,
             "last_rebuild_error": self._last_rebuild_error,
             "watchdog_last_check_at": self._watchdog_last_check_at.isoformat() if self._watchdog_last_check_at else None,
             "watchdog_last_kick_at": self._watchdog_last_kick_at.isoformat() if self._watchdog_last_kick_at else None,
         }
-        return self._build_recorder_safe_attributes(attrs)
 
-    def _flight_attr_projection(self, flight: dict[str, Any]) -> dict[str, Any]:
-        dep = flight.get("dep") or {}
-        arr = flight.get("arr") or {}
-        dep_air = (dep.get("airport") or {}) if isinstance(dep, dict) else {}
-        arr_air = (arr.get("airport") or {}) if isinstance(arr, dict) else {}
-        return {
-            "flight_key": flight.get("flight_key"),
-            "source": flight.get("source"),
-            "editable": flight.get("editable"),
-            "airline_code": flight.get("airline_code"),
-            "flight_number": flight.get("flight_number"),
-            "airline_name": flight.get("airline_name"),
-            "airline_logo_url": flight.get("airline_logo_url"),
-            "aircraft_type": flight.get("aircraft_type"),
-            "duration_minutes": flight.get("duration_minutes"),
-            "travellers": flight.get("travellers"),
-            "status_state": flight.get("status_state"),
-            "status_label": flight.get("status_label"),
-            "delay_status": flight.get("delay_status"),
-            "delay_minutes": flight.get("delay_minutes"),
-            "ui": flight.get("ui") if isinstance(flight.get("ui"), dict) else {},
-            "dep": {
-                "airport": {
-                    "iata": dep_air.get("iata"),
-                    "name": dep_air.get("name"),
-                    "city": dep_air.get("city"),
-                    "tz": dep_air.get("tz"),
-                    "tz_short": dep_air.get("tz_short"),
-                },
-                "scheduled": dep.get("scheduled") if isinstance(dep, dict) else None,
-                "estimated": dep.get("estimated") if isinstance(dep, dict) else None,
-                "actual": dep.get("actual") if isinstance(dep, dict) else None,
-                "scheduled_local": dep.get("scheduled_local") if isinstance(dep, dict) else None,
-                "estimated_local": dep.get("estimated_local") if isinstance(dep, dict) else None,
-                "actual_local": dep.get("actual_local") if isinstance(dep, dict) else None,
-            },
-            "arr": {
-                "airport": {
-                    "iata": arr_air.get("iata"),
-                    "name": arr_air.get("name"),
-                    "city": arr_air.get("city"),
-                    "tz": arr_air.get("tz"),
-                    "tz_short": arr_air.get("tz_short"),
-                },
-                "scheduled": arr.get("scheduled") if isinstance(arr, dict) else None,
-                "estimated": arr.get("estimated") if isinstance(arr, dict) else None,
-                "actual": arr.get("actual") if isinstance(arr, dict) else None,
-                "scheduled_local": arr.get("scheduled_local") if isinstance(arr, dict) else None,
-                "estimated_local": arr.get("estimated_local") if isinstance(arr, dict) else None,
-                "actual_local": arr.get("actual_local") if isinstance(arr, dict) else None,
-            },
-        }
+    @callback
+    def _sync_flight_entities(self, flights: list[dict[str, Any]]) -> None:
+        active_keys: set[str] = set()
+        new_entities: list[FlightDashboardFlightSensor] = []
 
-    def _attr_payload_size(self, attrs: dict[str, Any]) -> int:
-        try:
-            return len(json.dumps(attrs, ensure_ascii=True, separators=(",", ":"), default=str).encode("utf-8"))
-        except Exception:
-            return _RECORDER_ATTR_MAX_BYTES + 1
+        for flight in flights:
+            if not isinstance(flight, dict):
+                continue
+            flight_key = str(flight.get("flight_key") or "").strip()
+            if not flight_key:
+                continue
+            active_keys.add(flight_key)
+            ent = self._flight_entities.get(flight_key)
+            if ent is None:
+                ent = FlightDashboardFlightSensor(self.hass, self.entry, flight_key)
+                self._flight_entities[flight_key] = ent
+                new_entities.append(ent)
+                ent.async_set_flight(flight, write_state=False)
+                continue
+            ent.async_set_flight(flight)
 
-    def _build_recorder_safe_attributes(self, base_attrs: dict[str, Any]) -> dict[str, Any]:
-        full_attrs = dict(base_attrs)
-        full_attrs["flights"] = self._flights
-        full_attrs["flights_compact"] = False
-        full_attrs["flights_truncated"] = False
-        if self._attr_payload_size(full_attrs) <= _RECORDER_ATTR_TARGET_BYTES:
-            return full_attrs
+        if new_entities:
+            try:
+                add_result = self._async_add_entities_cb(new_entities, True)
+                if inspect.isawaitable(add_result):
+                    self.hass.async_create_task(add_result)
+            except Exception:
+                _LOGGER.exception("Per-flight entity sync: async_add_entities callback failed")
 
-        compact = [self._flight_attr_projection(f) for f in self._flights if isinstance(f, dict)]
-        compact_attrs = dict(base_attrs)
-        compact_attrs["flights"] = compact
-        compact_attrs["flights_compact"] = True
-        compact_attrs["flights_truncated"] = False
-        if self._attr_payload_size(compact_attrs) <= _RECORDER_ATTR_TARGET_BYTES:
-            return compact_attrs
-
-        trimmed = list(compact)
-        while trimmed and self._attr_payload_size({**compact_attrs, "flights": trimmed}) > _RECORDER_ATTR_TARGET_BYTES:
-            trimmed.pop()
-
-        compact_attrs["flights"] = trimmed
-        compact_attrs["flights_truncated"] = len(trimmed) < len(compact)
-        compact_attrs["flights_truncated_count"] = max(0, len(compact) - len(trimmed))
-        return compact_attrs
+        for flight_key, ent in list(self._flight_entities.items()):
+            if flight_key in active_keys:
+                continue
+            entity_id = ent.entity_id
+            if entity_id:
+                try:
+                    er.async_get(self.hass).async_remove(entity_id)
+                except Exception:
+                    _LOGGER.debug("Failed removing stale flight entity %s", entity_id, exc_info=True)
+                    ent.async_set_flight(None)
+            self._flight_entities.pop(flight_key, None)
 
     async def _run_rebuild_safe(self, reason: str) -> None:
         """Run rebuild and ensure we always retry after an unexpected failure."""
@@ -871,6 +925,8 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
 
         self._flights = flights
         self.hass.data.setdefault(DOMAIN, {})[DATA_UPCOMING_FLIGHTS] = list(flights)
+        self.hass.data.setdefault(DOMAIN, {})[_FLIGHT_ENTITY_STATE_KEY] = self._flight_entities
+        self._sync_flight_entities(flights)
         self.async_write_ha_state()
         # Notify selects/binary sensors even if state didn't change
         self.hass.bus.async_fire(EVENT_UPDATED)

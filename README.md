@@ -49,7 +49,8 @@ Core entities:
 - Inputs: `text.flight_status_tracker_add_flight_airline`, `text.flight_status_tracker_add_flight_number`, `date.flight_status_tracker_add_flight_date`,
   `text.flight_status_tracker_add_flight_dep_airport`, `text.flight_status_tracker_add_flight_travellers`, `text.flight_status_tracker_add_flight_notes`
 - Actions: `button.flight_status_tracker_preview_from_inputs`, `button.flight_status_tracker_confirm_add_preview`, `button.flight_status_tracker_clear_preview`
-- Flight list: `sensor.flight_status_tracker_upcoming_flights`
+- Flight list summary: `sensor.flight_status_tracker_upcoming_flights`
+- Per-flight entities: dynamic `sensor.*` entities with attribute `flight_key` (entity_id can vary)
 - Maintenance: `button.flight_status_tracker_refresh_now`, `button.flight_status_tracker_remove_landed`, `button.flight_status_tracker_refresh_directory_data` (entity_id may vary)
 
 Workflow: set airline + number + date -> press **Search/Preview** -> press **Add Flight**.
@@ -138,3 +139,4 @@ If a card is not listed in HACS, add its GitHub repo under **HACS > Frontend > C
 - `v1.0.1`: Polling windows simplified to Far-Future, Prepare to Travel, Take Off, Mid Flight, Landing, and Post Arrival. Prepare-to-Travel replaces previous mid/near pre-departure split. Take Off and Landing poll intervals now support a minimum of 1 minute.
 - `v1.0.2`: Options UI moved to a step-based wizard (mode -> providers -> credentials -> polling -> list/cleanup -> review). `min_api_poll_minutes` removed from the wizard and fixed internally at 5 minutes.
 - `v1.0.3`: Removed schedule provider `auto` mode. Schedule lookup now always uses the explicitly selected provider. Legacy saved `auto` values are coerced to `flightapi` for compatibility.
+- `v2.0.0`: Upcoming flights sensor now acts as a summary (`flights_total`, `flight_keys`) while each flight is exposed as a dynamic per-flight sensor with `flight_key` and full `flight` attributes. This is a breaking change: Lovelace/templates should read per-flight sensors rather than `sensor.flight_status_tracker_upcoming_flights` attribute `flights`.

@@ -2,12 +2,14 @@ type: vertical-stack
 cards:
   - type: custom:tailwindcss-template-card
     content: |
-      {% set flights =
-        state_attr('sensor.flight_status_tracker_upcoming_flights','flights')
-        or state_attr('sensor.flight_dashboard_upcoming_flights','flights')
-        or []
-      %} <div class="text-2xl font-semibold">
-        Flight List ({{ flights | count }})
+      {% set entries = namespace(items=[]) %}
+      {% for s in states.sensor %}
+        {% if s.attributes.flight_key and s.state not in ['unknown', 'unavailable'] %}
+          {% set entries.items = entries.items + [s] %}
+        {% endif %}
+      {% endfor %}
+      <div class="text-2xl font-semibold">
+        Flight List ({{ entries.items | count }})
       </div>
   - type: custom:auto-entities
     card:
@@ -15,13 +17,16 @@ cards:
     card_param: cards
     filter:
       template: >
-        {% set flights =
-          state_attr('sensor.flight_status_tracker_upcoming_flights','flights')
-          or state_attr('sensor.flight_dashboard_upcoming_flights','flights')
-          or []
-        %} {% set flights = flights | sort(attribute='dep.scheduled') %} [ {%-
-        for f in flights -%}
-          {%- set ui = f.ui or {} -%}
+        {% set entries = namespace(items=[]) %}
+        {% for s in states.sensor %}
+          {% if s.attributes.flight_key and s.state not in ['unknown', 'unavailable'] %}
+            {% set entries.items = entries.items + [s] %}
+          {% endif %}
+        {% endfor %}
+        {% set entries = entries.items | sort(attribute='attributes.dep_scheduled') %}
+        [ {% for s in entries %}
+          {%- set f = s.attributes.flight or {} -%}
+          {%- set ui = s.attributes.ui or f.ui or {} -%}
           {%- set dep = f.dep or {} -%}
           {%- set arr = f.arr or {} -%}
           {%- set dep_air = dep.airport or {} -%}
@@ -152,6 +157,7 @@ cards:
 
           {
             "type": "custom:tailwindcss-template-card",
+            "entity": "{{ s.entity_id }}",
             "content": "<div class='rounded-2xl bg-[rgba(255,255,255,0.04)] p-4 space-y-3'>\
             <div class='flex items-center gap-3'>\
               <img src='{{ airline_logo }}' class='h-12 w-12 object-contain rounded bg-white/90 p-1 ring-1 ring-white/30' />\
@@ -202,4 +208,4 @@ cards:
             <div class='text-xs opacity-60'>Updated {{ updated_ago if updated_ago is not none else '—' }} min ago · Source: {{ source }}</div>\
           </div>"
           }{{ "," if not loop.last else "" }}
-        {%- endfor -%} ]
+        {% endfor %} ]

@@ -448,6 +448,9 @@ async def async_update_statuses(
         position = None
         if position_provider and position_provider != status_provider:
             position = await async_fetch_position(hass, options, f, position_provider)
+        # Stamp refresh time per flight, at the moment this flight's provider calls complete.
+        fetched_at = dt_util.utcnow()
+        fetched_at_iso = fetched_at.isoformat()
         key = f.get("flight_key")
         if not key:
             continue
@@ -474,10 +477,8 @@ async def async_update_statuses(
                         if status.get(k) is not None:
                             prev_status[k] = status.get(k)
                     f["status"] = prev_status
-                    f["status_updated_at"] = now.isoformat()
                 else:
                     f["status"] = status
-                    f["status_updated_at"] = now.isoformat()
                     if position:
                         status["position"] = position
                         status["position_provider"] = position_provider
@@ -486,7 +487,7 @@ async def async_update_statuses(
                     _apply_assumed_arrival(f, now)
             else:
                 f["status"] = status
-                f["status_updated_at"] = now.isoformat()
+                f["status_updated_at"] = fetched_at_iso
                 if position:
                     status["position"] = position
                     status["position_provider"] = position_provider
@@ -523,7 +524,6 @@ async def async_update_statuses(
             prev_status["error"] = "no_status"
             prev_status["error_message"] = "Provider returned no status"
             f["status"] = prev_status
-            f["status_updated_at"] = now.isoformat()
 
         _apply_assumed_arrival(f, now)
 
@@ -540,7 +540,8 @@ async def async_update_statuses(
         next_dt = now + timedelta(seconds=refresh_seconds)
         cache[key] = {
             "status": f.get("status") if isinstance(f.get("status"), dict) else status,
-            "updated_at": now.isoformat(),
+            # Keep the timestamp of the latest successful status fetch.
+            "updated_at": f.get("status_updated_at"),
             "next_check": next_dt.isoformat(),
         }
         next_times.append(next_dt)

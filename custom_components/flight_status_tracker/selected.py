@@ -26,8 +26,26 @@ def get_upcoming_flights(hass: HomeAssistant) -> list[dict[str, Any]]:
         return [f for f in cached if isinstance(f, dict)]
 
     st = hass.states.get(UPCOMING_SENSOR)
-    flights = (st.attributes.get("flights") if st else None) or []
-    return [f for f in flights if isinstance(f, dict)]
+    flight_keys = (st.attributes.get("flight_keys") if st else None) or []
+    if not isinstance(flight_keys, list):
+        flight_keys = []
+
+    by_key: dict[str, dict[str, Any]] = {}
+    for ent in hass.states.async_all("sensor"):
+        key = ent.attributes.get("flight_key")
+        flight = ent.attributes.get("flight")
+        if not isinstance(key, str) or not key.strip():
+            continue
+        if not isinstance(flight, dict):
+            continue
+        by_key[key] = flight
+
+    if flight_keys:
+        ordered = [by_key[k] for k in flight_keys if isinstance(k, str) and k in by_key]
+        if ordered:
+            return ordered
+
+    return list(by_key.values())
 
 
 def get_selected_flight(hass: HomeAssistant) -> dict[str, Any] | None:

@@ -222,6 +222,7 @@ class FlightDashboardConfirmAddPreviewButton(ButtonEntity):
 
 
 class FlightDashboardClearAddPreviewButton(ButtonEntity):
+    # Legacy compatibility entity kept so existing dashboards/automations do not break.
     _attr_name = "Flight Status Tracker Clear Add Preview"
     _attr_unique_id = "flight_status_tracker_clear_add_preview"
     _attr_icon = "mdi:close-circle-outline"
@@ -231,8 +232,7 @@ class FlightDashboardClearAddPreviewButton(ButtonEntity):
         self.hass = hass
 
     async def async_press(self) -> None:
-        await async_set_preview(self.hass, None)
-        self.hass.bus.async_fire(EVENT_UPDATED)
+        await self.hass.services.async_call(DOMAIN, SERVICE_CLEAR_PREVIEW, {}, blocking=True)
 
 
 class FlightStatusTrackerPreviewFromInputsButton(ButtonEntity):
