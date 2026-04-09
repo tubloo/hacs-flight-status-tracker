@@ -594,7 +594,11 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
             self._last_rebuild_error = f"rebuild_failed:{reason}"
             _LOGGER.exception("Flight list rebuild failed (%s)", reason)
             if self._next_refresh_unsub:
-                return
+                try:
+                    self._next_refresh_unsub()
+                except Exception:
+                    _LOGGER.debug("Failed to clear existing refresh subscription", exc_info=True)
+                self._next_refresh_unsub = None
             retry_at = dt_util.utcnow() + timedelta(minutes=5)
             self._next_refresh_at = retry_at
 
@@ -649,7 +653,10 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
     async def _rebuild(self) -> None:
         """Rebuild the flight list and schedule the next smart refresh."""
         if self._next_refresh_unsub:
-            self._next_refresh_unsub()
+            try:
+                self._next_refresh_unsub()
+            except Exception:
+                _LOGGER.debug("Failed to clear previous refresh schedule", exc_info=True)
             self._next_refresh_unsub = None
 
         now = dt_util.utcnow()

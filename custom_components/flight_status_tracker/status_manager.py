@@ -444,10 +444,20 @@ async def async_update_statuses(
         if position_provider in ("none", "disabled", "off"):
             position_provider = ""
 
-        status = await async_fetch_status(hass, options, f)
+        try:
+            status = await async_fetch_status(hass, options, f)
+        except Exception as e:
+            status = {
+                "provider": status_provider,
+                "error": "fetch_exception",
+                "error_message": str(e),
+            }
         position = None
         if position_provider and position_provider != status_provider:
-            position = await async_fetch_position(hass, options, f, position_provider)
+            try:
+                position = await async_fetch_position(hass, options, f, position_provider)
+            except Exception:
+                position = None
         # Stamp refresh time per flight, at the moment this flight's provider calls complete.
         fetched_at = dt_util.utcnow()
         fetched_at_iso = fetched_at.isoformat()

@@ -132,6 +132,7 @@ If a card is not listed in HACS, add its GitHub repo under **HACS > Frontend > C
   
 ## Upgrade Notes
 
+- `v2.0.1`: Refresh reliability hardening. Status/position provider exceptions are now isolated per flight so one failing call does not break the full rebuild cycle, and scheduler retry handling is more defensive when replacing existing refresh callbacks.
 - `v0.3.0`: TripIt removed; auto-remove delay is configured in minutes after arrival.
 - `v0.3.1`: Performance improvements (less disk I/O for directory cache; less per-flight overhead when scheduling refreshes).
 - `v0.3.2`: Reliability fixes for startup/reload and refresh scheduling (safe rebuild retry on errors, startup manual-flight listener ordering, non-blocking directory warmup/refresh, consistent FR24 rate-limit block keying, and service re-registration/unload cleanup). Also includes schedule lookup ordering fix (mock no longer preempts configured providers) and service docs update (`dep_airport` field for preview/add).
