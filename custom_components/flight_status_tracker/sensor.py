@@ -938,6 +938,21 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
         # Notify selects/binary sensors even if state didn't change
         self.hass.bus.async_fire(EVENT_UPDATED)
 
+        if not next_refresh:
+            # Safety net: if any non-terminal flights remain but per-flight
+            # scheduling could not produce a next_refresh, keep the scheduler alive.
+            has_active = any(
+                isinstance(f, dict)
+                and (f.get("status_state") or "").strip().lower() not in ("arrived", "cancelled", "canceled", "landed")
+                for f in flights
+            )
+            if has_active:
+                next_refresh = now + timedelta(minutes=30)
+                _LOGGER.debug(
+                    "No smart next_refresh computed for active flights; using fallback refresh at %s",
+                    next_refresh.isoformat(),
+                )
+
         if next_refresh:
             @callback
             def _scheduled_refresh(_now) -> None:

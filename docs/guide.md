@@ -169,6 +169,11 @@ This gives a single, consistent attribute model across providers for dashboard c
 
 ## Upgrade Notes
 
+### v2.0.2
+
+- Refresh scheduling safety net: if smart per-flight scheduling cannot compute a next refresh while active flights still exist, a fallback refresh is scheduled so updates do not stall.
+- `status_updated_at` now advances when a provider response includes usable signal fields, even if the payload also carries an error marker.
+
 ### v0.3.0
 
 - TripIt was removed (manual flights only).

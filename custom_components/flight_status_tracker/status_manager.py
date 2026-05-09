@@ -489,6 +489,9 @@ async def async_update_statuses(
                     f["status"] = prev_status
                 else:
                     f["status"] = status
+                    # Provider returned usable signal fields; treat this as a fresh
+                    # status observation for "last updated" semantics.
+                    f["status_updated_at"] = fetched_at_iso
                     if position:
                         status["position"] = position
                         status["position_provider"] = position_provider

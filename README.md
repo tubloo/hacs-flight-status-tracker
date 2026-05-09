@@ -132,6 +132,7 @@ If a card is not listed in HACS, add its GitHub repo under **HACS > Frontend > C
   
 ## Upgrade Notes
 
+- `v2.0.2`: Refresh scheduling hardening. If smart per-flight scheduling yields no `next_refresh` while active flights still exist, a fallback refresh is now scheduled to keep updates alive. Also improves `status_updated_at` semantics so successful provider responses with usable signal fields advance the flight “last updated” timestamp.
 - `v2.0.1`: Refresh reliability hardening. Status/position provider exceptions are now isolated per flight so one failing call does not break the full rebuild cycle, and scheduler retry handling is more defensive when replacing existing refresh callbacks.
 - `v0.3.0`: TripIt removed; auto-remove delay is configured in minutes after arrival.
 - `v0.3.1`: Performance improvements (less disk I/O for directory cache; less per-flight overhead when scheduling refreshes).
