@@ -11,6 +11,7 @@ This file defines **default instructions for AI coding assistants** working in t
 ## Repository Map
 - `custom_components/flight_status_tracker/`: Home Assistant integration code.
 - `docs/`: documentation for users.
+- `docs/cards_contract.md`: source-of-truth contract for the companion cards repo.
 - `testing/`: demo package and testing helpers (see `testing/flight_status_tracker_demo.yaml`).
 - `DEVELOPMENT.md`: architecture overview + manual testing checklist.
 
@@ -69,6 +70,7 @@ If adding logic that’s easy to unit test, add/extend tests in `testing/` (only
 - **Do not create a release automatically.** Always ask for confirmation before tagging/publishing a release or running release tooling.
 - Before any release, perform a **release review**:
   - Verify the integration loads and key flows work (see **Testing / Validation** above).
+  - Review `docs/cards_contract.md` and confirm whether companion repo updates are required: `https://github.com/tubloo/hacs-flight-status-cards`.
   - Ensure user-facing docs are updated (`README.md`, `docs/`, `info.md`, `DEVELOPMENT.md` as applicable).
   - Ensure `AGENTS.md` is updated if any workflows/conventions changed during the work.
   - Provide a short **release summary** (what changed, any breaking changes/migration notes, and how you validated).

@@ -31,11 +31,24 @@ Common entities you will use in dashboards:
   - `button.flight_status_tracker_clear_preview`
 - Maintenance:
   - `button.flight_status_tracker_refresh_now`
-  - `button.flight_status_tracker_remove_landed`
+  - `button.flight_status_tracker_remove_landed_flights`
   - `button.flight_status_tracker_remove_selected_flight`
   - `button.flight_status_tracker_refresh_directory_data` (force refresh airport/airline directory cache; entity_id may vary)
 
 Note: Home Assistant also creates `update.flight_status_tracker_update` (normal update entity).
+
+## Dashboard Cards (Recommended)
+
+The recommended dashboard package is the companion frontend repo:
+- `https://github.com/tubloo/hacs-flight-status-cards`
+
+Provided card types:
+- `custom:flight-status-tracker-list-card`
+- `custom:flight-status-tracker-add-card`
+- `custom:flight-status-tracker-remove-card`
+- `custom:flight-status-tracker-diagnostics-card`
+
+Use `docs/lovelace/*.yaml` in this repo as reference templates and fallback examples.
 
 ## End-to-End Flow
 
@@ -237,7 +250,7 @@ Auto-prune only removes flights when:
 Actions:
 
 - Press `button.flight_status_tracker_refresh_now` to force a rebuild.
-- Press `button.flight_status_tracker_remove_landed` (or call `flight_status_tracker.prune_landed`) to prune immediately.
+- Press `button.flight_status_tracker_remove_landed_flights` (or call `flight_status_tracker.prune_landed`) to prune immediately.
 
 ### Preview is empty / never becomes ready
 

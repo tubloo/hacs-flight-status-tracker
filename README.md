@@ -43,6 +43,7 @@ Home Assistant storage. It does not send travellers/notes to providers.
 
 2) Use either:
 - **Simple dashboard**: add entities directly (Entities card is fine).
+- **Custom cards (recommended)**: install **Flight Status Tracker Cards** from `https://github.com/tubloo/hacs-flight-status-cards` and add the four cards directly.
 - **Example Lovelace YAML**: copy/paste the example cards from `docs/lovelace/`.
 
 Core entities:
@@ -51,7 +52,7 @@ Core entities:
 - Actions: `button.flight_status_tracker_preview_from_inputs`, `button.flight_status_tracker_confirm_add_preview`, `button.flight_status_tracker_clear_preview`
 - Flight list summary: `sensor.flight_status_tracker_upcoming_flights`
 - Per-flight entities: dynamic `sensor.*` entities with attribute `flight_key` (entity_id can vary)
-- Maintenance: `button.flight_status_tracker_refresh_now`, `button.flight_status_tracker_remove_landed`, `button.flight_status_tracker_refresh_directory_data` (entity_id may vary)
+- Maintenance: `button.flight_status_tracker_refresh_now`, `button.flight_status_tracker_remove_landed_flights`, `button.flight_status_tracker_refresh_directory_data` (entity_id may vary)
 
 Workflow: set airline + number + date -> press **Search/Preview** -> press **Add Flight**.
 
@@ -105,6 +106,14 @@ These files live under `/config/.storage/`:
 
 ## Lovelace
 
+Recommended dashboard package:
+- **Flight Status Tracker Cards repo**: `https://github.com/tubloo/hacs-flight-status-cards`
+- Card types:
+  - `custom:flight-status-tracker-list-card`
+  - `custom:flight-status-tracker-add-card`
+  - `custom:flight-status-tracker-remove-card`
+  - `custom:flight-status-tracker-diagnostics-card`
+
 Example Lovelace cards are provided under `docs/lovelace/`:
 - `docs/lovelace/flight_list.yaml`
 - `docs/lovelace/add_preview_flight.yaml`
@@ -123,7 +132,7 @@ If a card is not listed in HACS, add its GitHub repo under **HACS > Frontend > C
 - Arrived flight still showing:
   - Auto-remove only applies to `Arrived/Cancelled/Landed` and only after the configured cutoff.
   - Press `button.flight_status_tracker_refresh_now` to rebuild now.
-  - Press `button.flight_status_tracker_remove_landed` (or call `flight_status_tracker.prune_landed`) to prune immediately.
+  - Press `button.flight_status_tracker_remove_landed_flights` (or call `flight_status_tracker.prune_landed`) to prune immediately.
 - Preview shows nothing:
   - Check `sensor.flight_status_tracker_add_preview` attribute `preview` in Developer Tools -> States.
   - Ensure the schedule provider is configured and has a valid API key.
