@@ -32,7 +32,7 @@ Cards should default to these integration entities/actions (while allowing overr
 - `sensor.flight_status_tracker_api_utility_meter`
 - `button.flight_status_tracker_refresh_now`
 - `button.flight_status_tracker_remove_landed`
-- `button.flight_status_tracker_refresh_directory_data`
+- `button.flight_status_tracker_refresh_directory`
 
 ## When Cards Update Is Mandatory
 Update cards repo when integration changes any of the following:

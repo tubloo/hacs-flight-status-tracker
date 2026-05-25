@@ -52,7 +52,7 @@ Core entities:
 - Actions: `button.flight_status_tracker_preview_from_inputs`, `button.flight_status_tracker_confirm_add_preview`, `button.flight_status_tracker_clear_preview`
 - Flight list summary: `sensor.flight_status_tracker_upcoming_flights`
 - Per-flight entities: dynamic `sensor.*` entities with attribute `flight_key` (entity_id can vary)
-- Maintenance: `button.flight_status_tracker_refresh_now`, `button.flight_status_tracker_remove_landed_flights`, `button.flight_status_tracker_refresh_directory_data` (entity_id may vary)
+- Maintenance: `button.flight_status_tracker_refresh_now`, `button.flight_status_tracker_remove_landed`, `button.flight_status_tracker_refresh_directory` (entity_id may vary)
 
 Workflow: set airline + number + date -> press **Search/Preview** -> press **Add Flight**.
 
@@ -66,7 +66,7 @@ For a detailed walkthrough and troubleshooting, see `docs/guide.md`.
 - Provider timestamps are normalized to UTC internally.
 - **Position provider** is optional and is disabled by default.
 - Airport/airline directory enrichment is handled internally using data files and cached locally (refresh ~monthly).
-- You can force a directory refresh anytime via `button.flight_status_tracker_refresh_directory_data` (your entity_id may vary; check Developer Tools).
+- You can force a directory refresh anytime via `button.flight_status_tracker_refresh_directory` (your entity_id may vary; check Developer Tools).
 - Status updates use a configurable **time-based polling schedule** (Far-Future, Prepare to Travel, Take Off, Mid Flight, Landing, and Post Arrival windows).
 
 ## Defaults (when Options are untouched)
@@ -132,7 +132,7 @@ If a card is not listed in HACS, add its GitHub repo under **HACS > Frontend > C
 - Arrived flight still showing:
   - Auto-remove only applies to `Arrived/Cancelled/Landed` and only after the configured cutoff.
   - Press `button.flight_status_tracker_refresh_now` to rebuild now.
-  - Press `button.flight_status_tracker_remove_landed_flights` (or call `flight_status_tracker.prune_landed`) to prune immediately.
+  - Press `button.flight_status_tracker_remove_landed` (or call `flight_status_tracker.prune_landed`) to prune immediately.
 - Preview shows nothing:
   - Check `sensor.flight_status_tracker_add_preview` attribute `preview` in Developer Tools -> States.
   - Ensure the schedule provider is configured and has a valid API key.
