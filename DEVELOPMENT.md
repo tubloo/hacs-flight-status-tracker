@@ -17,8 +17,11 @@ Recommended quick checks:
 3) Call `flight_status_tracker.confirm_add` and confirm the sensor updates.
 4) Press `button.flight_status_tracker_refresh_now` to force a refresh.
 
-### FR24 Sandbox
-Enable **Use FR24 sandbox** in the integration options and set the sandbox key.
+### Provider Testing
+Set a single provider in integration options (`aerodatabox` or `flightapi`) and verify:
+- `preview_flight` returns a `ready` preview for a known flight/date.
+- `confirm_add` persists the flight and creates/updates dynamic flight entities.
+- `refresh_now` updates status fields from the selected provider.
 
 ### Demo package
 Copy `testing/flight_status_tracker_demo.yaml` into your HA `config/packages/` and restart.

@@ -137,17 +137,13 @@ If a card is not listed in HACS, add its GitHub repo under **HACS > Frontend > C
   - Check `sensor.flight_status_tracker_add_preview` attribute `preview` in Developer Tools -> States.
   - Ensure the schedule provider is configured and has a valid API key.
   - Schedule lookup does not fail over to another provider. If your selected schedule provider has no record for that date/flight, preview will stay `no_match`.
-  - Aviationstack note: near-future schedule coverage can vary by plan/data availability. Current-day lookups use schedule/timetable endpoints, while future-day lookups use `flightsFuture` (provider-enforced window). Avoid repeated schedule queries within ~10 seconds to reduce rate-limit errors.
   
 ## Upgrade Notes
 
+- `v2.1.0`: Provider model simplified to supported providers (`aerodatabox`, `flightapi`) with single-provider schedule selection, updated provider-first directory behavior/docs, and refreshed diagnostics/Lovelace documentation.
 - `v2.0.2`: Refresh scheduling hardening. If smart per-flight scheduling yields no `next_refresh` while active flights still exist, a fallback refresh is now scheduled to keep updates alive. Also improves `status_updated_at` semantics so successful provider responses with usable signal fields advance the flight “last updated” timestamp.
 - `v2.0.1`: Refresh reliability hardening. Status/position provider exceptions are now isolated per flight so one failing call does not break the full rebuild cycle, and scheduler retry handling is more defensive when replacing existing refresh callbacks.
-- `v0.3.0`: TripIt removed; auto-remove delay is configured in minutes after arrival.
-- `v0.3.1`: Performance improvements (less disk I/O for directory cache; less per-flight overhead when scheduling refreshes).
-- `v0.3.2`: Reliability fixes for startup/reload and refresh scheduling (safe rebuild retry on errors, startup manual-flight listener ordering, non-blocking directory warmup/refresh, consistent FR24 rate-limit block keying, and service re-registration/unload cleanup). Also includes schedule lookup ordering fix (mock no longer preempts configured providers) and service docs update (`dep_airport` field for preview/add).
 - `v1.0.0`: Added scheduler watchdog self-healing and per-flight `ui` display block for faster dashboard templates. Watchdog adds diagnostics (`last_rebuild_at`, `next_refresh_at`, `watchdog_last_*`) and auto-kicks rebuild on stale scheduling state without forcing unnecessary API polls.
 - `v1.0.1`: Polling windows simplified to Far-Future, Prepare to Travel, Take Off, Mid Flight, Landing, and Post Arrival. Prepare-to-Travel replaces previous mid/near pre-departure split. Take Off and Landing poll intervals now support a minimum of 1 minute.
-- `v1.0.2`: Options UI moved to a step-based wizard (mode -> providers -> credentials -> polling -> list/cleanup -> review). `min_api_poll_minutes` removed from the wizard and fixed internally at 5 minutes.
-- `v1.0.3`: Removed schedule provider `auto` mode. Schedule lookup now always uses the explicitly selected provider. Legacy saved `auto` values are coerced to `flightapi` for compatibility.
+- `v1.0.2`: Options UI moved to a step-based wizard (providers -> credentials -> polling -> list/cleanup -> review). `min_api_poll_minutes` removed from the wizard and fixed internally at 5 minutes.
 - `v2.0.0`: Upcoming flights sensor now acts as a summary (`flights_total`, `flight_keys`) while each flight is exposed as a dynamic per-flight sensor with `flight_key` and full `flight` attributes. This is a breaking change: Lovelace/templates should read per-flight sensors rather than `sensor.flight_status_tracker_upcoming_flights` attribute `flights`.

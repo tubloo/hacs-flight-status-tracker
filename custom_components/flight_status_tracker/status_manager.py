@@ -10,15 +10,12 @@ from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .status_resolver import apply_status
-from .schedule_lookup import lookup_schedule
 from .directory import get_airport
-from .manual_store import async_update_manual_flight
-from .status_providers import async_fetch_status, async_fetch_position
+from .status_providers import async_fetch_status
 
 
 STATUS_CACHE_KEY = "status_cache"
 CONF_DELAY_GRACE_MINUTES = "delay_grace_minutes"
-CONF_POSITION_PROVIDER = "position_provider"
 
 
 def _status_cache(hass: HomeAssistant) -> dict[str, dict[str, Any]]:
@@ -337,7 +334,7 @@ async def async_update_statuses(
     """
     cache = _status_cache(hass)
     now = dt_util.utcnow()
-    configured_provider = (options.get("status_provider") or "flightapi").lower()
+    configured_provider = (options.get("status_provider") or "aerodatabox").lower()
     grace_minutes = int(options.get(CONF_DELAY_GRACE_MINUTES, 10))
     poll_cfg = _polling_config(options)
 
@@ -350,13 +347,6 @@ async def async_update_statuses(
         if not cached:
             continue
         status = cached.get("status")
-        # If cached status appears to be for a different operating date, drop it and refetch.
-        if isinstance(status, dict) and _status_date_mismatch(f, status):
-            status = {
-                "provider": configured_provider,
-                "error": "date_mismatch",
-                "error_message": "Provider returned status for different operating date",
-            }
         if isinstance(status, dict):
             cached_provider = (status.get("provider") or "").lower()
             if cached_provider and cached_provider != configured_provider:
@@ -437,13 +427,7 @@ async def async_update_statuses(
             arr["airport"] = arr_air
             f["dep"] = dep
             f["arr"] = arr
-        status_provider = (options.get("status_provider") or "flightapi").lower()
-        position_provider = (options.get(CONF_POSITION_PROVIDER) or "none").lower()
-        if position_provider in ("same_as_status", "same", "status"):
-            position_provider = status_provider
-        if position_provider in ("none", "disabled", "off"):
-            position_provider = ""
-
+        status_provider = (options.get("status_provider") or "aerodatabox").lower()
         try:
             status = await async_fetch_status(hass, options, f)
         except Exception as e:
@@ -452,12 +436,6 @@ async def async_update_statuses(
                 "error": "fetch_exception",
                 "error_message": str(e),
             }
-        position = None
-        if position_provider and position_provider != status_provider:
-            try:
-                position = await async_fetch_position(hass, options, f, position_provider)
-            except Exception:
-                position = None
         # Stamp refresh time per flight, at the moment this flight's provider calls complete.
         fetched_at = dt_util.utcnow()
         fetched_at_iso = fetched_at.isoformat()
@@ -492,41 +470,15 @@ async def async_update_statuses(
                     # Provider returned usable signal fields; treat this as a fresh
                     # status observation for "last updated" semantics.
                     f["status_updated_at"] = fetched_at_iso
-                    if position:
-                        status["position"] = position
-                        status["position_provider"] = position_provider
                     apply_status(f, status)
                     _coerce_state_by_time(f, now)
                     _apply_assumed_arrival(f, now)
             else:
                 f["status"] = status
                 f["status_updated_at"] = fetched_at_iso
-                if position:
-                    status["position"] = position
-                    status["position_provider"] = position_provider
                 apply_status(f, status)
                 _coerce_state_by_time(f, now)
                 _apply_assumed_arrival(f, now)
-        elif position:
-            f["position"] = position
-
-            # Backfill missing dep/arr airports and scheduled times into manual storage
-            if (f.get("source") or "manual") == "manual":
-                dep_air = (f.get("dep") or {}).get("airport") or {}
-                arr_air = (f.get("arr") or {}).get("airport") or {}
-                status_dep_scheduled = status.get("dep_scheduled") if isinstance(status, dict) else None
-                status_arr_scheduled = status.get("arr_scheduled") if isinstance(status, dict) else None
-                updates: dict[str, Any] = {}
-                if not f.get("dep_airport") and dep_air.get("iata"):
-                    updates["dep_airport"] = dep_air.get("iata")
-                if not f.get("arr_airport") and arr_air.get("iata"):
-                    updates["arr_airport"] = arr_air.get("iata")
-                if not f.get("scheduled_departure"):
-                    updates["scheduled_departure"] = (f.get("dep") or {}).get("scheduled") or status_dep_scheduled
-                if not f.get("scheduled_arrival"):
-                    updates["scheduled_arrival"] = (f.get("arr") or {}).get("scheduled") or status_arr_scheduled
-                if updates:
-                    await async_update_manual_flight(hass, key, updates)
 
         else:
             # No status from provider: keep last data but surface error

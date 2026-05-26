@@ -26,8 +26,6 @@ from .providers.openflights.directory import (
     OPENFLIGHTS_AIRPORTS_URL,
     async_get_airport as openflights_get_airport,
 )
-from .providers.aviationstack.directory import AviationstackDirectoryProvider
-from .providers.airlabs.directory import AirLabsDirectoryProvider
 from .directory_store import (
     async_get_airport,
     async_get_airline,
@@ -55,10 +53,12 @@ DIRECTORY_SOURCE_PROVIDER = "provider"
 DEFAULT_DIRECTORY_SOURCE_MODE = DIRECTORY_SOURCE_INBUILT
 _CONF_SCHEDULE_PROVIDER = "schedule_provider"
 _CONF_STATUS_PROVIDER = "status_provider"
+_CONF_AERODATABOX_GATEWAY = "aerodatabox_gateway"
+_CONF_AERODATABOX_RAPIDAPI_KEY = "aerodatabox_rapidapi_key"
+_CONF_AERODATABOX_APIMARKET_KEY = "aerodatabox_apimarket_key"
 _SOURCE_FLIGHTAPI = "flightapi_iata"
-_SOURCE_AVIATIONSTACK = "aviationstack"
-_SOURCE_AIRLABS = "airlabs"
-_PROVIDER_SOURCES = {_SOURCE_FLIGHTAPI, _SOURCE_AVIATIONSTACK, _SOURCE_AIRLABS}
+_SOURCE_AERODATABOX = "aerodatabox"
+_PROVIDER_SOURCES = {_SOURCE_AERODATABOX, _SOURCE_FLIGHTAPI}
 
 def airline_logo_url(iata: str | None) -> str | None:
     """Return a lightweight logo URL for airline IATA code."""
@@ -91,16 +91,12 @@ def _is_provider_source(entry: dict[str, Any] | None) -> bool:
 
 
 def _provider_order(options: dict[str, Any]) -> list[str]:
-    """Build provider order using configured schedule/status preference first."""
-    preferred: list[str] = []
+    """Return the single configured provider for directory enrichment."""
     for key in (_CONF_SCHEDULE_PROVIDER, _CONF_STATUS_PROVIDER):
         val = str(options.get(key) or "").strip().lower()
-        if val in ("flightapi", "aviationstack", "airlabs") and val not in preferred:
-            preferred.append(val)
-    for p in ("flightapi", "aviationstack", "airlabs"):
-        if p not in preferred:
-            preferred.append(p)
-    return preferred
+        if val in ("aerodatabox", "flightapi"):
+            return [val]
+    return ["aerodatabox"]
 
 
 def _pick_str(data: dict[str, Any], keys: tuple[str, ...]) -> str | None:
@@ -532,94 +528,94 @@ async def _get_airport_provider_flightapi(hass: HomeAssistant, options: dict[str
     return await async_get_airport(hass, iata)
 
 
-async def _get_airline_provider_aviationstack(hass: HomeAssistant, options: dict[str, Any], iata: str) -> dict[str, Any] | None:
-    key = str(options.get("aviationstack_access_key") or "").strip()
+def _aerodatabox_auth(options: dict[str, Any]) -> tuple[str, dict[str, str], bool]:
+    gateway = str(options.get(_CONF_AERODATABOX_GATEWAY) or "rapidapi").strip().lower()
+    if gateway == "apimarket":
+        key = str(options.get(_CONF_AERODATABOX_APIMARKET_KEY) or "").strip()
+        if not key:
+            return "", {}, False
+        return (
+            "https://prod.api.market/api/v1/aedbx/aerodatabox",
+            {
+                "x-magicapi-key": key,
+                "accept": "application/json",
+            },
+            True,
+        )
+
+    key = str(options.get(_CONF_AERODATABOX_RAPIDAPI_KEY) or "").strip()
     if not key:
-        return None
-    try:
-        provider = AviationstackDirectoryProvider(hass, key)
-        data = await provider.async_get_airline(iata)
-    except Exception as e:
-        _LOGGER.debug("Aviationstack airline directory lookup failed for %s: %s", iata, e)
-        record_api_call(hass, "aviationstack", flow="directory", outcome="error")
-        return None
-    record_api_call(hass, "aviationstack", flow="directory", outcome="success" if data else "error")
-    if not data:
-        return None
-    data["logo_url"] = data.get("logo_url") or data.get("logo") or airline_logo_url(iata)
-    data["source"] = _SOURCE_AVIATIONSTACK
-    await async_set_airline(hass, iata, data)
-    return await async_get_airline(hass, iata)
+        return "", {}, False
+    return (
+        "https://aerodatabox.p.rapidapi.com",
+        {
+            "X-RapidAPI-Key": key,
+            "X-RapidAPI-Host": "aerodatabox.p.rapidapi.com",
+            "accept": "application/json",
+        },
+        True,
+    )
 
 
-async def _get_airport_provider_aviationstack(hass: HomeAssistant, options: dict[str, Any], iata: str) -> dict[str, Any] | None:
-    key = str(options.get("aviationstack_access_key") or "").strip()
-    if not key:
+async def _get_airport_provider_aerodatabox(
+    hass: HomeAssistant, options: dict[str, Any], iata: str
+) -> dict[str, Any] | None:
+    base_url, headers, enabled = _aerodatabox_auth(options)
+    if not enabled:
         return None
+
+    url = f"{base_url}/airports/iata/{iata}"
+    params = {"withRunways": "false", "withTime": "true"}
     try:
-        provider = AviationstackDirectoryProvider(hass, key)
-        data = await provider.async_get_airport(iata)
+        session = async_get_clientsession(hass)
+        async with session.get(url, params=params, headers=headers, timeout=20) as resp:
+            if resp.status != 200:
+                record_api_call(hass, "aerodatabox", flow="directory", outcome="error")
+                return None
+            payload = await resp.json(content_type=None)
     except Exception as e:
-        _LOGGER.debug("Aviationstack airport directory lookup failed for %s: %s", iata, e)
-        record_api_call(hass, "aviationstack", flow="directory", outcome="error")
+        _LOGGER.debug("AeroDataBox airport directory lookup failed for %s: %s", iata, e)
+        record_api_call(hass, "aerodatabox", flow="directory", outcome="error")
         return None
-    record_api_call(hass, "aviationstack", flow="directory", outcome="success" if data else "error")
-    if not data:
+
+    record_api_call(hass, "aerodatabox", flow="directory", outcome="success")
+    if not isinstance(payload, dict):
         return None
-    data["source"] = _SOURCE_AVIATIONSTACK
-    data["tz"] = _normalize_tz(data.get("tz"))
+
+    city = payload.get("municipalityName")
+    local_time = payload.get("localTime")
+    tz = None
+    if isinstance(local_time, dict):
+        tz = _normalize_tz(_pick_str(local_time, ("timezoneIana", "timezone")))
+    data = {
+        "iata": iata,
+        "icao": _pick_str(payload, ("icao", "icaoCode")),
+        "name": _pick_str(payload, ("name", "shortName")),
+        "city": city if isinstance(city, str) and city.strip() else None,
+        "country": _pick_str(payload, ("countryName",)),
+        "tz": tz,
+        "source": _SOURCE_AERODATABOX,
+    }
     await async_set_airport(hass, iata, data)
     return await async_get_airport(hass, iata)
 
 
-async def _get_airline_provider_airlabs(hass: HomeAssistant, options: dict[str, Any], iata: str) -> dict[str, Any] | None:
-    key = str(options.get("airlabs_api_key") or "").strip()
-    if not key:
-        return None
-    try:
-        provider = AirLabsDirectoryProvider(hass, key)
-        data = await provider.async_get_airline(iata)
-    except Exception as e:
-        _LOGGER.debug("AirLabs airline directory lookup failed for %s: %s", iata, e)
-        record_api_call(hass, "airlabs", flow="directory", outcome="error")
-        return None
-    record_api_call(hass, "airlabs", flow="directory", outcome="success" if data else "error")
-    if not data:
-        return None
-    data["logo_url"] = data.get("logo_url") or data.get("logo") or airline_logo_url(iata)
-    data["source"] = _SOURCE_AIRLABS
-    await async_set_airline(hass, iata, data)
-    return await async_get_airline(hass, iata)
-
-
-async def _get_airport_provider_airlabs(hass: HomeAssistant, options: dict[str, Any], iata: str) -> dict[str, Any] | None:
-    key = str(options.get("airlabs_api_key") or "").strip()
-    if not key:
-        return None
-    try:
-        provider = AirLabsDirectoryProvider(hass, key)
-        data = await provider.async_get_airport(iata)
-    except Exception as e:
-        _LOGGER.debug("AirLabs airport directory lookup failed for %s: %s", iata, e)
-        record_api_call(hass, "airlabs", flow="directory", outcome="error")
-        return None
-    record_api_call(hass, "airlabs", flow="directory", outcome="success" if data else "error")
-    if not data:
-        return None
-    data["source"] = _SOURCE_AIRLABS
-    data["tz"] = _normalize_tz(data.get("tz"))
-    await async_set_airport(hass, iata, data)
-    return await async_get_airport(hass, iata)
+async def _get_airline_provider_aerodatabox(
+    hass: HomeAssistant, options: dict[str, Any], iata: str
+) -> dict[str, Any] | None:
+    # AeroDataBox currently has no dedicated airline-directory endpoint
+    # (single-airline details by code). Keep provider order semantics
+    # and fall through to the next provider/inbuilt source.
+    _ = (hass, options, iata)
+    return None
 
 
 async def _get_airline_provider(hass: HomeAssistant, options: dict[str, Any], iata: str) -> dict[str, Any] | None:
     for provider in _provider_order(options):
-        if provider == "flightapi":
+        if provider == "aerodatabox":
+            data = await _get_airline_provider_aerodatabox(hass, options, iata)
+        elif provider == "flightapi":
             data = await _get_airline_provider_flightapi(hass, options, iata)
-        elif provider == "aviationstack":
-            data = await _get_airline_provider_aviationstack(hass, options, iata)
-        elif provider == "airlabs":
-            data = await _get_airline_provider_airlabs(hass, options, iata)
         else:
             data = None
         if data:
@@ -629,12 +625,10 @@ async def _get_airline_provider(hass: HomeAssistant, options: dict[str, Any], ia
 
 async def _get_airport_provider(hass: HomeAssistant, options: dict[str, Any], iata: str) -> dict[str, Any] | None:
     for provider in _provider_order(options):
-        if provider == "flightapi":
+        if provider == "aerodatabox":
+            data = await _get_airport_provider_aerodatabox(hass, options, iata)
+        elif provider == "flightapi":
             data = await _get_airport_provider_flightapi(hass, options, iata)
-        elif provider == "aviationstack":
-            data = await _get_airport_provider_aviationstack(hass, options, iata)
-        elif provider == "airlabs":
-            data = await _get_airport_provider_airlabs(hass, options, iata)
         else:
             data = None
         if data:

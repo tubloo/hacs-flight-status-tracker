@@ -48,7 +48,7 @@ Provided card types:
 - `custom:flight-status-tracker-remove-card`
 - `custom:flight-status-tracker-diagnostics-card`
 
-Use `docs/lovelace/*.yaml` in this repo as reference templates and fallback examples.
+Use `docs/lovelace/*.yaml` in this repo as reference templates.
 
 ## End-to-End Flow
 
@@ -68,7 +68,7 @@ The integration separates providers by responsibility:
 - Position provider: optional; used for live position. Disabled by default.
 - Directory enrichment: airport/airline metadata can use:
   - `inbuilt` (OpenFlights/Airportsdata), or
-  - `provider` (configured providers first: FlightAPI/Aviationstack/AirLabs, then fallback to inbuilt).
+  - `provider` (selected provider first, then inbuilt fallback).
 
 ## Options (Common)
 
@@ -84,25 +84,14 @@ These are configured in the integration Options UI (Settings > Devices & Service
 
 - Schedule provider: used for preview/add to find airports + scheduled times.
   - There is no schedule `auto` mode. You must select one schedule provider.
-  - Preview/add does not cross-fallback to other schedule providers.
+  - Preview/add uses only the selected provider (no cross-provider fallback).
 - Status provider: used for ongoing status updates.
 - Position provider: optional; adds live position when supported.
-- Airline/Airport data source is always hybrid: configured providers first (FlightAPI/Aviationstack/AirLabs), then fallback to inbuilt cache.
+- Airline/Airport data source is always hybrid: selected provider first, then inbuilt cache.
 
 Provider capability summary:
-- `flightapi`: schedule + status; no live position.
-- `aviationstack`: schedule + status (depends on plan access); no live position.
-- `airlabs`: schedule + status; limited live position fields via status payload.
-- `flightradar24`: schedule + status + live position.
-- `opensky`: status/position enrichment only (no schedule lookup).
-- `local`: status simulation only (no external API).
-- `mock`: testing only.
-
-Aviationstack note:
-- Current-day schedule queries use `flight_schedules`/`timetable`; future-day queries use `flightsFuture`.
-- `flightsFuture` is provider-restricted to sufficiently future dates (provider validates this window).
-- Aviationstack documents strict short-window throttling on schedule endpoints; avoid back-to-back calls inside ~10 seconds.
-- Timetable/schedule endpoint access depends on your Aviationstack plan.
+- `aerodatabox`: schedule + status + structured movement/status fields + live position (when available by source/plan).
+- `flightapi`: schedule + status; limited/no position support.
 - If the selected provider does not return a record for the requested date/flight, preview returns `no_match`.
 
 Validation rule:
@@ -182,6 +171,12 @@ This gives a single, consistent attribute model across providers for dashboard c
 
 ## Upgrade Notes
 
+### v2.1.0
+
+- Provider scope reduced to supported providers only: `aerodatabox` and `flightapi`.
+- Preview/add schedule lookup is strictly single-provider (selected provider only).
+- Directory enrichment docs and diagnostics examples were updated to match the current provider model.
+
 ### v2.0.2
 
 - Refresh scheduling safety net: if smart per-flight scheduling cannot compute a next refresh while active flights still exist, a fallback refresh is scheduled so updates do not stall.
@@ -189,7 +184,6 @@ This gives a single, consistent attribute model across providers for dashboard c
 
 ### v0.3.0
 
-- TripIt was removed (manual flights only).
 - Polling uses an internal 5-minute floor for non-critical windows.
 - Auto-removal of past flights is configured in **minutes** after arrival (instead of hours).
 
@@ -202,7 +196,6 @@ This gives a single, consistent attribute model across providers for dashboard c
 - Reliability: startup/reload and refresh scheduling fixes, including safe rebuild retry on errors.
 - Startup behavior: manual-flight update listener now attaches before the first rebuild, reducing cases where flights appeared empty until a later trigger.
 - Startup latency: directory warmup/refresh no longer blocks initial entity rendering.
-- Provider throttling: FR24 block tracking now uses a consistent key across components.
 - Services: idempotent service registration plus cleanup when the last integration entry unloads.
 - Schedule lookup: mock fixtures no longer preempt configured providers unless explicitly selected.
 

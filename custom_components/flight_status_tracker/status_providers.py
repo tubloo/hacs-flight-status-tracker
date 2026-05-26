@@ -189,197 +189,40 @@ async def async_fetch_status(
     provider_override: str | None = None,
 ) -> dict[str, Any] | None:
     """Fetch provider status for a flight, honoring configured provider preference."""
-    provider = (provider_override or options.get("status_provider") or "flightapi").lower()
-    use_sandbox = bool(options.get("fr24_use_sandbox", False))
-    fr24_key = (options.get("fr24_api_key") or "").strip()
-    fr24_sandbox_key = (options.get("fr24_sandbox_key") or "").strip()
-    fr24_active_key = fr24_sandbox_key if use_sandbox and fr24_sandbox_key else fr24_key
-    av_key = (options.get("aviationstack_access_key") or "").strip()
-    al_key = (options.get("airlabs_api_key") or "").strip()
+    provider = (provider_override or options.get("status_provider") or "aerodatabox").lower()
+    adb_gateway = (options.get("aerodatabox_gateway") or "rapidapi").strip().lower()
+    adb_rapid_key = (options.get("aerodatabox_rapidapi_key") or "").strip()
+    adb_market_key = (options.get("aerodatabox_apimarket_key") or "").strip()
     fa_key = (options.get("flightapi_api_key") or "").strip()
-    os_user = (options.get("opensky_username") or "").strip()
-    os_pass = (options.get("opensky_password") or "").strip()
-    fr24_version = (options.get("fr24_api_version") or "v1").strip()
+    adb_key = adb_market_key if adb_gateway == "apimarket" else adb_rapid_key
 
     # Provider preference with fallbacks if missing key
-    if provider == "flightradar24" and fr24_active_key:
-        if is_blocked(hass, "fr24"):
+    if provider == "aerodatabox" and adb_key:
+        if is_blocked(hass, "aerodatabox"):
             return None
-        from .providers.flightradar24.status import Flightradar24StatusProvider
+        from .providers.aerodatabox.status import AeroDataBoxStatusProvider
 
         try:
-            res = await Flightradar24StatusProvider(
-                hass, api_key=fr24_active_key, use_sandbox=use_sandbox, api_version=fr24_version
+            res = await AeroDataBoxStatusProvider(
+                hass,
+                gateway=adb_gateway,
+                rapidapi_key=adb_rapid_key,
+                apimarket_key=adb_market_key,
             ).async_get_status(flight)
         except Exception as e:
-            out = {"provider": "flightradar24", "error": "network", "detail": str(e)}
-            record_api_call(hass, "flightradar24", flow="status", outcome=_outcome_from_payload(out))
+            out = {"provider": "aerodatabox", "error": "network", "detail": str(e)}
+            record_api_call(hass, "aerodatabox", flow="status", outcome=_outcome_from_payload(out))
             return out
-        out = _attach_normalized_position(_unwrap_status(res), "flightradar24")
-        record_api_call(hass, "flightradar24", flow="status", outcome=_outcome_from_payload(out))
+        out = _attach_normalized_position(_unwrap_status(res), "aerodatabox")
+        record_api_call(hass, "aerodatabox", flow="status", outcome=_outcome_from_payload(out))
         if isinstance(out, dict) and out.get("error") in ("rate_limited", "quota_exceeded"):
             reason = out.get("error")
             block_for = out.get("retry_after") or (24 * 60 * 60 if reason == "quota_exceeded" else 900)
-            set_block(hass, "fr24", block_for, reason)
-            return None
-        return out
-
-    if provider == "aviationstack" and av_key:
-        if is_blocked(hass, "aviationstack"):
-            return None
-        from .providers.aviationstack.status import AviationstackStatusProvider
-
-        try:
-            res = await AviationstackStatusProvider(hass, av_key).async_get_status(flight)
-        except Exception as e:
-            out = {"provider": "aviationstack", "error": "network", "detail": str(e)}
-            record_api_call(hass, "aviationstack", flow="status", outcome=_outcome_from_payload(out))
-            return out
-        out = _attach_normalized_position(_unwrap_status(res), "aviationstack")
-        record_api_call(hass, "aviationstack", flow="status", outcome=_outcome_from_payload(out))
-        if isinstance(out, dict) and out.get("error") in ("rate_limited", "quota_exceeded"):
-            reason = out.get("error")
-            block_for = out.get("retry_after") or (24 * 60 * 60 if reason == "quota_exceeded" else 900)
-            set_block(hass, "aviationstack", block_for, reason)
-            return None
-        return out
-
-    if provider == "airlabs" and al_key:
-        if is_blocked(hass, "airlabs"):
-            return None
-        from .providers.airlabs.status import AirLabsStatusProvider
-
-        try:
-            res = await AirLabsStatusProvider(hass, al_key).async_get_status(flight)
-        except Exception as e:
-            out = {"provider": "airlabs", "error": "network", "detail": str(e)}
-            record_api_call(hass, "airlabs", flow="status", outcome=_outcome_from_payload(out))
-            return out
-        out = _attach_normalized_position(_unwrap_status(res), "airlabs")
-        record_api_call(hass, "airlabs", flow="status", outcome=_outcome_from_payload(out))
-        if isinstance(out, dict) and out.get("error") in ("rate_limited", "quota_exceeded"):
-            reason = out.get("error")
-            block_for = out.get("retry_after") or (24 * 60 * 60 if reason == "quota_exceeded" else 900)
-            set_block(hass, "airlabs", block_for, reason)
+            set_block(hass, "aerodatabox", block_for, reason)
             return None
         return out
 
     if provider == "flightapi" and fa_key:
-        if is_blocked(hass, "flightapi"):
-            return None
-        from .providers.flightapi.status import FlightAPIStatusProvider
-
-        try:
-            res = await FlightAPIStatusProvider(hass, fa_key).async_get_status(flight)
-        except Exception as e:
-            out = {"provider": "flightapi", "error": "network", "detail": str(e)}
-            record_api_call(hass, "flightapi", flow="status", outcome=_outcome_from_payload(out))
-            return out
-        out = _attach_normalized_position(_unwrap_status(res), "flightapi")
-        record_api_call(hass, "flightapi", flow="status", outcome=_outcome_from_payload(out))
-        if isinstance(out, dict) and out.get("error") in ("rate_limited", "quota_exceeded"):
-            reason = out.get("error")
-            block_for = out.get("retry_after") or (24 * 60 * 60 if reason == "quota_exceeded" else 900)
-            set_block(hass, "flightapi", block_for, reason)
-            return None
-        return out
-
-    if provider == "opensky" and (os_user or os_pass):
-        # OpenSky can work without auth but is rate-limited; only use if configured
-        from .providers.opensky.status import OpenSkyEnrichmentProvider
-
-        res = await OpenSkyEnrichmentProvider(hass).async_get_status(flight)
-        out = _attach_normalized_position(_unwrap_status(res), "opensky")
-        record_api_call(hass, "opensky", flow="status", outcome=_outcome_from_payload(out))
-        return out
-
-    if provider == "local":
-        from .providers.local.status import LocalStatusProvider
-
-        dep = _parse_dt((flight.get("dep") or {}).get("scheduled"))
-        if dep is None:
-            return None
-        arr = _parse_dt((flight.get("arr") or {}).get("scheduled"))
-        res = await LocalStatusProvider().async_get_status(
-            flight_key=flight.get("flight_key") or "",
-            airline_code=flight.get("airline_code") or "",
-            flight_number=flight.get("flight_number") or "",
-            dep_airport=((flight.get("dep") or {}).get("airport") or {}).get("iata") or "",
-            arr_airport=((flight.get("arr") or {}).get("airport") or {}).get("iata") or "",
-            scheduled_departure=dep,
-            scheduled_arrival=arr,
-            now=dt_util.utcnow(),
-        )
-        return _unwrap_status(res)
-
-    if provider == "mock":
-        from .providers.mock.status import MockStatusProvider
-
-        res = await MockStatusProvider().async_get_status(flight)
-        return _unwrap_status(res)
-
-    # Fallback: try any configured provider in priority order
-    if fr24_active_key:
-        if is_blocked(hass, "fr24"):
-            return None
-        from .providers.flightradar24.status import Flightradar24StatusProvider
-
-        try:
-            res = await Flightradar24StatusProvider(
-                hass, api_key=fr24_active_key, use_sandbox=use_sandbox, api_version=fr24_version
-            ).async_get_status(flight)
-        except Exception as e:
-            out = {"provider": "flightradar24", "error": "network", "detail": str(e)}
-            record_api_call(hass, "flightradar24", flow="status", outcome=_outcome_from_payload(out))
-            return out
-        out = _attach_normalized_position(_unwrap_status(res), "flightradar24")
-        record_api_call(hass, "flightradar24", flow="status", outcome=_outcome_from_payload(out))
-        if isinstance(out, dict) and out.get("error") in ("rate_limited", "quota_exceeded"):
-            reason = out.get("error")
-            block_for = out.get("retry_after") or (24 * 60 * 60 if reason == "quota_exceeded" else 900)
-            set_block(hass, "fr24", block_for, reason)
-            return None
-        return out
-    if av_key:
-        if is_blocked(hass, "aviationstack"):
-            return None
-        from .providers.aviationstack.status import AviationstackStatusProvider
-
-        try:
-            res = await AviationstackStatusProvider(hass, av_key).async_get_status(flight)
-        except Exception as e:
-            out = {"provider": "aviationstack", "error": "network", "detail": str(e)}
-            record_api_call(hass, "aviationstack", flow="status", outcome=_outcome_from_payload(out))
-            return out
-        out = _attach_normalized_position(_unwrap_status(res), "aviationstack")
-        record_api_call(hass, "aviationstack", flow="status", outcome=_outcome_from_payload(out))
-        if isinstance(out, dict) and out.get("error") in ("rate_limited", "quota_exceeded"):
-            reason = out.get("error")
-            block_for = out.get("retry_after") or (24 * 60 * 60 if reason == "quota_exceeded" else 900)
-            set_block(hass, "aviationstack", block_for, reason)
-            return None
-        return out
-    if al_key:
-        if is_blocked(hass, "airlabs"):
-            return None
-        from .providers.airlabs.status import AirLabsStatusProvider
-
-        try:
-            res = await AirLabsStatusProvider(hass, al_key).async_get_status(flight)
-        except Exception as e:
-            out = {"provider": "airlabs", "error": "network", "detail": str(e)}
-            record_api_call(hass, "airlabs", flow="status", outcome=_outcome_from_payload(out))
-            return out
-        out = _attach_normalized_position(_unwrap_status(res), "airlabs")
-        record_api_call(hass, "airlabs", flow="status", outcome=_outcome_from_payload(out))
-        if isinstance(out, dict) and out.get("error") in ("rate_limited", "quota_exceeded"):
-            reason = out.get("error")
-            block_for = out.get("retry_after") or (24 * 60 * 60 if reason == "quota_exceeded" else 900)
-            set_block(hass, "airlabs", block_for, reason)
-            return None
-        return out
-
-    if fa_key:
         if is_blocked(hass, "flightapi"):
             return None
         from .providers.flightapi.status import FlightAPIStatusProvider
@@ -410,88 +253,33 @@ async def async_fetch_position(
     if provider in ("", "none"):
         return None
 
-    use_sandbox = bool(options.get("fr24_use_sandbox", False))
-    fr24_key = (options.get("fr24_api_key") or "").strip()
-    fr24_sandbox_key = (options.get("fr24_sandbox_key") or "").strip()
-    fr24_active_key = fr24_sandbox_key if use_sandbox and fr24_sandbox_key else fr24_key
-    av_key = (options.get("aviationstack_access_key") or "").strip()
-    al_key = (options.get("airlabs_api_key") or "").strip()
-    os_user = (options.get("opensky_username") or "").strip()
-    os_pass = (options.get("opensky_password") or "").strip()
-    fr24_version = (options.get("fr24_api_version") or "v1").strip()
+    adb_gateway = (options.get("aerodatabox_gateway") or "rapidapi").strip().lower()
+    adb_rapid_key = (options.get("aerodatabox_rapidapi_key") or "").strip()
+    adb_market_key = (options.get("aerodatabox_apimarket_key") or "").strip()
+    adb_key = adb_market_key if adb_gateway == "apimarket" else adb_rapid_key
 
-    if provider == "flightradar24" and fr24_active_key:
-        if is_blocked(hass, "fr24"):
+    if provider == "aerodatabox" and adb_key:
+        if is_blocked(hass, "aerodatabox"):
             return None
-        from .providers.flightradar24.status import Flightradar24StatusProvider
+        from .providers.aerodatabox.status import AeroDataBoxStatusProvider
 
         try:
-            res = await Flightradar24StatusProvider(
-                hass, api_key=fr24_active_key, use_sandbox=use_sandbox, api_version=fr24_version
+            res = await AeroDataBoxStatusProvider(
+                hass,
+                gateway=adb_gateway,
+                rapidapi_key=adb_rapid_key,
+                apimarket_key=adb_market_key,
             ).async_get_status(flight)
         except Exception as e:
-            out = {"provider": "flightradar24", "error": "network", "detail": str(e)}
-            record_api_call(hass, "flightradar24", flow="position", outcome=_outcome_from_payload(out))
+            out = {"provider": "aerodatabox", "error": "network", "detail": str(e)}
+            record_api_call(hass, "aerodatabox", flow="position", outcome=_outcome_from_payload(out))
             return None
         out = _unwrap_status(res)
-        record_api_call(hass, "flightradar24", flow="position", outcome=_outcome_from_payload(out))
+        record_api_call(hass, "aerodatabox", flow="position", outcome=_outcome_from_payload(out))
         if isinstance(out, dict) and out.get("error") in ("rate_limited", "quota_exceeded"):
             reason = out.get("error")
             block_for = out.get("retry_after") or (24 * 60 * 60 if reason == "quota_exceeded" else 900)
-            set_block(hass, "fr24", block_for, reason)
-            return None
-        return _extract_position(out, provider)
-
-    if provider == "airlabs" and al_key:
-        if is_blocked(hass, "airlabs"):
-            return None
-        from .providers.airlabs.status import AirLabsStatusProvider
-
-        try:
-            res = await AirLabsStatusProvider(hass, al_key).async_get_status(flight)
-        except Exception as e:
-            out = {"provider": "airlabs", "error": "network", "detail": str(e)}
-            record_api_call(hass, "airlabs", flow="position", outcome=_outcome_from_payload(out))
-            return None
-        out = _unwrap_status(res)
-        record_api_call(hass, "airlabs", flow="position", outcome=_outcome_from_payload(out))
-        if isinstance(out, dict) and out.get("error") in ("rate_limited", "quota_exceeded"):
-            reason = out.get("error")
-            block_for = out.get("retry_after") or (24 * 60 * 60 if reason == "quota_exceeded" else 900)
-            set_block(hass, "airlabs", block_for, reason)
-            return None
-        return _extract_position(out, provider)
-
-    if provider == "opensky" and (os_user or os_pass):
-        from .providers.opensky.status import OpenSkyEnrichmentProvider
-
-        try:
-            res = await OpenSkyEnrichmentProvider(hass).async_get_status(flight)
-        except Exception as e:
-            out = {"provider": "opensky", "error": "network", "detail": str(e)}
-            record_api_call(hass, "opensky", flow="position", outcome=_outcome_from_payload(out))
-            return None
-        out = _unwrap_status(res)
-        record_api_call(hass, "opensky", flow="position", outcome=_outcome_from_payload(out))
-        return _extract_position(out, provider)
-
-    if provider == "aviationstack" and av_key:
-        if is_blocked(hass, "aviationstack"):
-            return None
-        from .providers.aviationstack.status import AviationstackStatusProvider
-
-        try:
-            res = await AviationstackStatusProvider(hass, av_key).async_get_status(flight)
-        except Exception as e:
-            out = {"provider": "aviationstack", "error": "network", "detail": str(e)}
-            record_api_call(hass, "aviationstack", flow="position", outcome=_outcome_from_payload(out))
-            return None
-        out = _unwrap_status(res)
-        record_api_call(hass, "aviationstack", flow="position", outcome=_outcome_from_payload(out))
-        if isinstance(out, dict) and out.get("error") in ("rate_limited", "quota_exceeded"):
-            reason = out.get("error")
-            block_for = out.get("retry_after") or (24 * 60 * 60 if reason == "quota_exceeded" else 900)
-            set_block(hass, "aviationstack", block_for, reason)
+            set_block(hass, "aerodatabox", block_for, reason)
             return None
         return _extract_position(out, provider)
 

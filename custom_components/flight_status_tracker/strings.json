@@ -14,7 +14,7 @@
       "threshold_order_invalid": "Far-future threshold must be greater than mid-future threshold.",
       "interval_below_min_api_poll": "Interval must be at least 5 minutes for non-critical windows.",
       "stop_before_arrival_window_end": "Post Arrival stop polling must be at least as long as the Landing window end.",
-      "at_least_one_provider_required": "Select at least one external provider with valid credentials. Local/mock-only configuration is not allowed.",
+      "at_least_one_provider_required": "Provide valid credentials for the selected provider.",
       "provider_key_required": "Credentials are required for the selected provider."
     }
   },
@@ -22,40 +22,26 @@
     "error": {
       "interval_below_min_api_poll": "Interval must be at least 5 minutes for non-critical windows.",
       "stop_before_arrival_window_end": "Post Arrival stop polling must be at least as long as the Landing window end.",
-      "at_least_one_provider_required": "Select at least one external provider with valid credentials. Local/mock-only configuration is not allowed.",
+      "at_least_one_provider_required": "Provide valid credentials for the selected provider.",
       "provider_key_required": "Credentials are required for the selected provider."
     },
     "step": {
-      "mode": {
-        "title": "Provider setup mode",
-        "description": "Choose whether you want a single provider setup or separate providers by function.",
-        "data": {
-          "provider_mode": "Setup mode"
-        }
-      },
       "providers": {
-        "title": "Providers",
-        "description": "Choose provider routing for schedule, status, and position.",
+        "title": "Provider",
+        "description": "Choose one provider for schedule and status updates.",
         "data": {
-          "primary_provider": "Primary provider",
-          "enable_position": "Enable position tracking (if supported)",
-          "status_provider": "Status provider",
-          "schedule_provider": "Schedule provider",
-          "position_provider": "Position provider"
+          "primary_provider": "Provider",
+          "enable_position": "Enable live position (AeroDataBox only)"
         }
       },
       "credentials": {
         "title": "Credentials",
-        "description": "Enter API credentials for selected providers.",
+        "description": "Enter API credentials for your selected provider.",
         "data": {
-          "aviationstack_access_key": "Aviationstack API key",
-          "airlabs_api_key": "AirLabs API key",
-          "flightapi_api_key": "FlightAPI.io API key",
-          "opensky_username": "OpenSky username",
-          "opensky_password": "OpenSky password",
-          "fr24_api_key": "Flightradar24 API key",
-          "fr24_sandbox_key": "Flightradar24 sandbox API key",
-          "fr24_use_sandbox": "Use FR24 sandbox"
+          "aerodatabox_gateway": "AeroDataBox gateway",
+          "aerodatabox_rapidapi_key": "AeroDataBox RapidAPI key",
+          "aerodatabox_apimarket_key": "AeroDataBox API.Market key",
+          "flightapi_api_key": "FlightAPI.io API key"
         }
       },
       "polling": {
@@ -89,7 +75,7 @@
       },
       "review": {
         "title": "Review and save",
-        "description": "Mode: {mode}\nSchedule: {schedule}\nStatus: {status}\nPosition: {position}\nPolling (min): Far-Future {far}, Prepare to Travel {prepare}, Take Off {takeoff}, Mid Flight {mid}, Landing {landing}\n\nSubmit to save."
+        "description": "Provider: {schedule}\nStatus: {status}\nPosition: {position}\nPolling (min): Far-Future {far}, Prepare to Travel {prepare}, Take Off {takeoff}, Mid Flight {mid}, Landing {landing}\n\nSubmit to save."
       },
       "init": {
         "title": "Flight Status Tracker options",

@@ -27,7 +27,6 @@ from .status_manager import async_update_statuses
 from .status_resolver import _normalize_iso_in_tz
 from .tz_short import tz_short_name
 from .directory import get_airport, get_airline, warm_directory_cache
-from .providers.flightradar24.client import FR24Client, FR24RateLimitError, FR24Error
 from .rate_limit import get_blocks, is_blocked, get_block_until, get_block_reason, set_block
 from .selected import get_selected_flight, get_flight_position
 from .api_metrics import get_api_metrics_snapshot, record_api_call
@@ -91,6 +90,21 @@ def _term_gate(terminal: Any, gate: Any) -> str:
     if g:
         return f"Gate {g}"
     return ""
+
+
+def _join_nonempty(parts: list[str]) -> str:
+    vals = [p.strip() for p in parts if isinstance(p, str) and p.strip()]
+    return " · ".join(vals)
+
+
+def _fmt_event_local(ts: Any, tzname: str | None, label: str) -> str:
+    if not isinstance(ts, str) or not ts.strip():
+        return ""
+    dt, hm = _format_hm_local(ts, tzname)
+    if hm:
+        return f"{label} {hm}"
+    # Keep raw value only as a last resort.
+    return f"{label} {ts}"
 
 
 def _as_utc_dt(val: datetime | None) -> datetime | None:
@@ -234,6 +248,62 @@ def _build_ui_block(flight: dict[str, Any], now_utc, options: dict[str, Any]) ->
     arr_term_gate = _term_gate(arr.get("terminal"), arr.get("gate"))
     show_term_gate_row = bool(dep_term_gate or arr_term_gate)
 
+    dep_ops_line = _join_nonempty(
+        [
+            f"Check-in {dep.get('check_in_counters')}" if dep.get("check_in_counters") else "",
+            _fmt_event_local(dep.get("boarding_time"), dep_tz, "Boarding"),
+            _fmt_event_local(dep.get("door_time"), dep_tz, "Door"),
+        ]
+    )
+    arr_ops_line = _join_nonempty(
+        [
+            f"Baggage {arr.get('baggage_claim')}" if arr.get("baggage_claim") else "",
+            f"Belt {arr.get('belt')}" if arr.get("belt") else "",
+        ]
+    )
+    show_ops_row = bool(dep_ops_line or arr_ops_line)
+
+    dep_movement_line = _join_nonempty(
+        [
+            _fmt_event_local(dep.get("off_block_time"), dep_tz, "Off-block"),
+            _fmt_event_local(dep.get("takeoff_time"), dep_tz, "Takeoff"),
+        ]
+    )
+    arr_movement_line = _join_nonempty(
+        [
+            _fmt_event_local(arr.get("landing_time"), arr_tz, "Landing"),
+            _fmt_event_local(arr.get("on_block_time"), arr_tz, "On-block"),
+        ]
+    )
+    show_movement_row = bool(dep_movement_line or arr_movement_line)
+
+    position = flight.get("position") if isinstance(flight.get("position"), dict) else {}
+    pos_line = None
+    pos_is_stale = False
+    pos_age_min = None
+    if position:
+        alt = position.get("altitude_ft")
+        gs = position.get("ground_speed_kt")
+        hdg = position.get("heading_deg")
+        pos_parts: list[str] = []
+        if isinstance(alt, (int, float)):
+            pos_parts.append(f"FL{int(round(alt / 100.0))}")
+        if isinstance(gs, (int, float)):
+            pos_parts.append(f"{int(round(gs))} kt")
+        if isinstance(hdg, (int, float)):
+            pos_parts.append(f"HDG {int(round(hdg))}\u00b0")
+        pos_line = " \u00b7 ".join(pos_parts) if pos_parts else None
+        pts = _parse_dt(position.get("timestamp"))
+        if pts:
+            pts_u = dt_util.as_utc(pts) if pts.tzinfo else dt_util.as_utc(dt_util.as_local(pts))
+            pos_age_min = int(max(0, round((dt_util.as_utc(now_utc) - pts_u).total_seconds() / 60)))
+            pos_is_stale = pos_age_min >= 15
+            if pos_line:
+                if pos_is_stale:
+                    pos_line = f"{pos_line} \u00b7 Position stale ({pos_age_min}m)"
+                else:
+                    pos_line = f"{pos_line} \u00b7 Updated {pos_age_min}m ago"
+
     diverted_air = flight.get("diverted_to_airport") or {}
     diverted_iata = (flight.get("diverted_to_iata") or diverted_air.get("iata") or "").strip().upper()
     has_diverted = state_label == "Diverted" and bool(diverted_iata)
@@ -297,6 +367,16 @@ def _build_ui_block(flight: dict[str, Any], now_utc, options: dict[str, Any]) ->
         "dep_term_gate": dep_term_gate,
         "arr_term_gate": arr_term_gate,
         "show_term_gate_row": show_term_gate_row,
+        "dep_ops_line": dep_ops_line,
+        "arr_ops_line": arr_ops_line,
+        "show_ops_row": show_ops_row,
+        "dep_movement_line": dep_movement_line,
+        "arr_movement_line": arr_movement_line,
+        "show_movement_row": show_movement_row,
+        "position_line": pos_line,
+        "position_is_stale": pos_is_stale,
+        "position_age_min": pos_age_min,
+        "show_position_row": bool(pos_line),
         "route_progress_at_poll_pct": progress_pct,
         "plane_x_at_poll_pct": plane_x,
         "progress_start_ts": progress_start_ts,
@@ -346,13 +426,6 @@ SCHEMA_EXAMPLE: dict[str, Any] = {
     "arr": {"airport": {"iata": "CPH", "tz": "Europe/Copenhagen", "tz_short": "CET", "city": "Copenhagen"}, "scheduled": "2026-01-30T18:55:00+00:00"},
 }
 
-# Options keys (keep local to avoid config_flow import)
-CONF_FR24_API_KEY = "fr24_api_key"
-CONF_FR24_SANDBOX_KEY = "fr24_sandbox_key"
-CONF_FR24_USE_SANDBOX = "fr24_use_sandbox"
-CONF_FR24_API_VERSION = "fr24_api_version"
-
-FR24_USAGE_REFRESH = timedelta(minutes=30)
 PROVIDER_BLOCK_REFRESH = timedelta(minutes=1)
 WATCHDOG_CHECK_INTERVAL = timedelta(minutes=2)
 WATCHDOG_STALE_REBUILD = timedelta(minutes=15)
@@ -366,7 +439,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities) -> N
         upcoming,
         FlightDashboardSelectedFlightSensor(hass, entry),
         FlightDashboardApiMetricsSensor(hass, entry),
-        FlightDashboardFr24UsageSensor(hass, entry),
+        FlightDashboardApiUtilityMeterSensor(hass, entry),
         FlightDashboardProviderBlockSensor(hass, entry),
     ]
     try:
@@ -1073,28 +1146,28 @@ class FlightDashboardApiMetricsSensor(SensorEntity):
         self.async_write_ha_state()
 
 
-class FlightDashboardFr24UsageSensor(SensorEntity):
-    _attr_name = "Flight Status Tracker FR24 Usage"
-    _attr_icon = "mdi:chart-box"
+class FlightDashboardApiUtilityMeterSensor(SensorEntity):
+    _attr_name = "Flight Status Tracker API Utility Meter"
+    _attr_icon = "mdi:calendar-month"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_should_poll = False
-    _attr_native_unit_of_measurement = "credits"
+    _attr_native_unit_of_measurement = "calls"
+    _attr_suggested_object_id = "flight_status_tracker_api_utility_meter"
 
     def __init__(self, hass: HomeAssistant, entry) -> None:
         self.hass = hass
         self.entry = entry
-        self._attr_unique_id = f"{DOMAIN}_fr24_usage"
+        self._attr_unique_id = f"{DOMAIN}_api_utility_meter"
         self._unsub: Callable[[], None] | None = None
-        self._usage: dict[str, Any] | None = None
+        self._attrs: dict[str, Any] = {}
 
     async def async_added_to_hass(self) -> None:
-        await self._update()
-
         @callback
-        def _on_tick(_now) -> None:
-            self.hass.async_create_task(self._update())
+        def _kick() -> None:
+            self._refresh()
 
-        self._unsub = async_track_time_interval(self.hass, _on_tick, FR24_USAGE_REFRESH)
+        self._unsub = async_dispatcher_connect(self.hass, SIGNAL_API_METRICS_UPDATED, _kick)
+        self._refresh()
 
     async def async_will_remove_from_hass(self) -> None:
         if self._unsub:
@@ -1103,94 +1176,20 @@ class FlightDashboardFr24UsageSensor(SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        return self._usage or {}
+        return self._attrs
 
-    async def _update(self) -> None:
-        options = dict(self.entry.options)
-        use_sandbox = bool(options.get(CONF_FR24_USE_SANDBOX, False))
-        fr24_key = (options.get(CONF_FR24_API_KEY) or "").strip()
-        fr24_sandbox_key = (options.get(CONF_FR24_SANDBOX_KEY) or "").strip()
-        api_version = (options.get(CONF_FR24_API_VERSION) or "v1").strip() or "v1"
-
-        key = fr24_sandbox_key if use_sandbox and fr24_sandbox_key else fr24_key
-        if not key:
-            self._attr_available = False
-            self._usage = {"error": "missing_api_key", "sandbox": use_sandbox}
-            self.async_write_ha_state()
-            return
-
-        if is_blocked(self.hass, "fr24"):
-            until = get_block_until(self.hass, "fr24")
-            reason = get_block_reason(self.hass, "fr24")
-            self._attr_available = True
-            self._usage = {
-                "blocked": True,
-                "blocked_until": dt_util.as_local(until).isoformat() if until else None,
-                "blocked_reason": reason,
-                "sandbox": use_sandbox,
-            }
-            self._attr_native_value = None
-            self.async_write_ha_state()
-            return
-
-        client = FR24Client(self.hass, key, use_sandbox=use_sandbox, api_version=api_version)
-        try:
-            data = await client.usage()
-            record_api_call(self.hass, "flightradar24", flow="usage", outcome="success")
-        except FR24RateLimitError as e:
-            record_api_call(self.hass, "flightradar24", flow="usage", outcome="rate_limited")
-            seconds = int(e.retry_after or 3600)
-            set_block(self.hass, "fr24", seconds, "rate_limited")
-            self._attr_available = True
-            self._usage = {
-                "blocked": True,
-                "blocked_until": (dt_util.utcnow() + timedelta(seconds=seconds)).isoformat(),
-                "blocked_reason": "rate_limited",
-                "sandbox": use_sandbox,
-            }
-            self._attr_native_value = None
-            self.async_write_ha_state()
-            return
-        except FR24Error as e:
-            record_api_call(self.hass, "flightradar24", flow="usage", outcome="error")
-            self._attr_available = False
-            self._usage = {"error": str(e), "sandbox": use_sandbox}
-            self.async_write_ha_state()
-            return
-        except Exception as e:
-            record_api_call(self.hass, "flightradar24", flow="usage", outcome="error")
-            self._attr_available = False
-            self._usage = {"error": str(e), "sandbox": use_sandbox}
-            self.async_write_ha_state()
-            return
-
-        items = data.get("data") or []
-        total_credits = 0
-        total_requests = 0
-        by_endpoint: list[dict[str, Any]] = []
-        if isinstance(items, list):
-            for item in items:
-                if not isinstance(item, dict):
-                    continue
-                total_credits += int(item.get("credits") or 0)
-                total_requests += int(item.get("request_count") or 0)
-                by_endpoint.append(
-                    {
-                        "endpoint": item.get("endpoint"),
-                        "credits": int(item.get("credits") or 0),
-                        "requests": int(item.get("request_count") or 0),
-                    }
-                )
-
-        self._attr_available = True
-        self._attr_native_value = total_credits
-        self._usage = {
-            "credits_used": total_credits,
-            "requests": total_requests,
-            "endpoints": by_endpoint,
-            "sandbox": use_sandbox,
-            "api_version": api_version,
+    def _refresh(self) -> None:
+        snapshot = get_api_metrics_snapshot(self.hass)
+        monthly = int(snapshot.get("monthly_calls") or 0) if isinstance(snapshot, dict) else 0
+        month_key = snapshot.get("month_key") if isinstance(snapshot, dict) else None
+        by_provider = snapshot.get("monthly_by_provider") if isinstance(snapshot, dict) else {}
+        self._attr_native_value = monthly
+        self._attrs = {
+            "month_key": month_key,
+            "by_provider": by_provider if isinstance(by_provider, dict) else {},
+            "updated_at": snapshot.get("updated_at") if isinstance(snapshot, dict) else None,
         }
+        self._attr_available = True
         self.async_write_ha_state()
 
 

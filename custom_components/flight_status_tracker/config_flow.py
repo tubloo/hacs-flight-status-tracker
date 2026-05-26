@@ -23,9 +23,9 @@ CONF_PRUNE_LANDED_HOURS = "prune_landed_hours"
 CONF_AUTO_REMOVE_AFTER_ARRIVAL_MINUTES = "auto_remove_after_arrival_minutes"
 
 # Status options
-CONF_STATUS_PROVIDER = "status_provider"  # local|aviationstack|airlabs|opensky|flightradar24
-CONF_POSITION_PROVIDER = "position_provider"  # same_as_status|flightradar24|opensky|airlabs|none
-CONF_SCHEDULE_PROVIDER = "schedule_provider"  # flightapi|aviationstack|airlabs|flightradar24|mock
+CONF_STATUS_PROVIDER = "status_provider"  # aerodatabox|flightapi
+CONF_POSITION_PROVIDER = "position_provider"  # same_as_status|aerodatabox|none
+CONF_SCHEDULE_PROVIDER = "schedule_provider"  # aerodatabox|flightapi
 CONF_MIN_API_POLL_MINUTES = "min_api_poll_minutes"
 CONF_DELAY_GRACE_MINUTES = "delay_grace_minutes"
 CONF_FAR_BEFORE_DEP_THRESHOLD_HOURS = "far_before_dep_threshold_hours"
@@ -42,21 +42,13 @@ CONF_ARR_WINDOW_PRE_MINUTES = "arr_window_pre_minutes"
 CONF_ARR_WINDOW_POST_MINUTES = "arr_window_post_minutes"
 CONF_ARR_WINDOW_INTERVAL_MINUTES = "arr_window_interval_minutes"
 CONF_STOP_REFRESH_AFTER_ARRIVAL_MINUTES = "stop_refresh_after_arrival_minutes"
-CONF_AVIATIONSTACK_KEY = "aviationstack_access_key"
-CONF_AIRLABS_KEY = "airlabs_api_key"
 CONF_FLIGHTAPI_KEY = "flightapi_api_key"
-CONF_OPENSKY_USERNAME = "opensky_username"
-CONF_OPENSKY_PASSWORD = "opensky_password"
 CONF_DIRECTORY_SOURCE_MODE = "directory_source_mode"
-
-# NEW: Flightradar24 options
-CONF_FR24_API_KEY = "fr24_api_key"
-CONF_FR24_SANDBOX_KEY = "fr24_sandbox_key"
-CONF_FR24_USE_SANDBOX = "fr24_use_sandbox"
-CONF_FR24_API_VERSION = "fr24_api_version"
+CONF_AERODATABOX_GATEWAY = "aerodatabox_gateway"  # rapidapi|apimarket
+CONF_AERODATABOX_RAPIDAPI_KEY = "aerodatabox_rapidapi_key"
+CONF_AERODATABOX_APIMARKET_KEY = "aerodatabox_apimarket_key"
 
 # Wizard-only fields (not persisted directly)
-CONF_PROVIDER_MODE = "provider_mode"  # single|multi
 CONF_PRIMARY_PROVIDER = "primary_provider"
 CONF_ENABLE_POSITION = "enable_position"
 
@@ -68,9 +60,9 @@ DEFAULT_AUTO_PRUNE_LANDED = True
 DEFAULT_PRUNE_LANDED_HOURS = 1
 DEFAULT_AUTO_REMOVE_AFTER_ARRIVAL_MINUTES = 60
 
-DEFAULT_STATUS_PROVIDER = "flightapi"
+DEFAULT_STATUS_PROVIDER = "aerodatabox"
 DEFAULT_POSITION_PROVIDER = "none"
-DEFAULT_SCHEDULE_PROVIDER = "flightapi"
+DEFAULT_SCHEDULE_PROVIDER = "aerodatabox"
 DEFAULT_DELAY_GRACE_MINUTES = 10
 DEFAULT_FAR_BEFORE_DEP_THRESHOLD_HOURS = 6
 DEFAULT_FAR_BEFORE_DEP_INTERVAL_MINUTES = 1440
@@ -87,33 +79,23 @@ DEFAULT_ARR_WINDOW_POST_MINUTES = 10
 DEFAULT_ARR_WINDOW_INTERVAL_MINUTES = 15
 DEFAULT_STOP_REFRESH_AFTER_ARRIVAL_MINUTES = 60
 
-DEFAULT_FR24_USE_SANDBOX = False
-DEFAULT_FR24_API_VERSION = "v1"
 DEFAULT_DIRECTORY_SOURCE_MODE = "provider"
+DEFAULT_AERODATABOX_GATEWAY = "rapidapi"
 
 SINGLE_PROVIDER_OPTIONS: tuple[str, ...] = (
+    "aerodatabox",
     "flightapi",
-    "aviationstack",
-    "airlabs",
-    "flightradar24",
 )
 EXTERNAL_PROVIDER_OPTIONS: tuple[str, ...] = (
+    "aerodatabox",
     "flightapi",
-    "aviationstack",
-    "airlabs",
-    "flightradar24",
-    "opensky",
 )
 SCHEDULE_CAPABLE_PROVIDER_OPTIONS: tuple[str, ...] = (
+    "aerodatabox",
     "flightapi",
-    "aviationstack",
-    "airlabs",
-    "flightradar24",
 )
 POSITION_CAPABLE_PROVIDER_OPTIONS: tuple[str, ...] = (
-    "airlabs",
-    "flightradar24",
-    "opensky",
+    "aerodatabox",
 )
 
 
@@ -142,16 +124,8 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
         options = dict(self.config_entry.options)
 
         schedule_provider = str(options.get(CONF_SCHEDULE_PROVIDER, DEFAULT_SCHEDULE_PROVIDER)).strip().lower()
-        # Legacy compatibility: "auto" is removed; coerce to default provider.
-        if schedule_provider == "auto":
-            schedule_provider = DEFAULT_SCHEDULE_PROVIDER
         status_provider = str(options.get(CONF_STATUS_PROVIDER, DEFAULT_STATUS_PROVIDER)).strip().lower()
         position_provider = str(options.get(CONF_POSITION_PROVIDER, DEFAULT_POSITION_PROVIDER)).strip().lower()
-
-        provider_mode = "multi"
-        if schedule_provider in SINGLE_PROVIDER_OPTIONS and status_provider == schedule_provider:
-            if position_provider in ("none", "same_as_status", schedule_provider):
-                provider_mode = "single"
 
         primary_provider = schedule_provider if schedule_provider in SINGLE_PROVIDER_OPTIONS else DEFAULT_SCHEDULE_PROVIDER
         enable_position = position_provider == primary_provider and primary_provider in POSITION_CAPABLE_PROVIDER_OPTIONS
@@ -160,7 +134,6 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
         prune_minutes_default = int(options.get(CONF_AUTO_REMOVE_AFTER_ARRIVAL_MINUTES, prune_hours * 60))
 
         return {
-            CONF_PROVIDER_MODE: provider_mode,
             CONF_PRIMARY_PROVIDER: primary_provider,
             CONF_ENABLE_POSITION: bool(enable_position),
             CONF_SCHEDULE_PROVIDER: schedule_provider,
@@ -205,58 +178,34 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
             CONF_STOP_REFRESH_AFTER_ARRIVAL_MINUTES: int(
                 options.get(CONF_STOP_REFRESH_AFTER_ARRIVAL_MINUTES, DEFAULT_STOP_REFRESH_AFTER_ARRIVAL_MINUTES)
             ),
-            CONF_AVIATIONSTACK_KEY: str(options.get(CONF_AVIATIONSTACK_KEY, "") or ""),
-            CONF_AIRLABS_KEY: str(options.get(CONF_AIRLABS_KEY, "") or ""),
             CONF_FLIGHTAPI_KEY: str(options.get(CONF_FLIGHTAPI_KEY, "") or ""),
-            CONF_OPENSKY_USERNAME: str(options.get(CONF_OPENSKY_USERNAME, "") or ""),
-            CONF_OPENSKY_PASSWORD: str(options.get(CONF_OPENSKY_PASSWORD, "") or ""),
-            CONF_FR24_API_KEY: str(options.get(CONF_FR24_API_KEY, "") or ""),
-            CONF_FR24_SANDBOX_KEY: str(options.get(CONF_FR24_SANDBOX_KEY, "") or ""),
-            CONF_FR24_USE_SANDBOX: bool(options.get(CONF_FR24_USE_SANDBOX, DEFAULT_FR24_USE_SANDBOX)),
-            CONF_FR24_API_VERSION: str(options.get(CONF_FR24_API_VERSION, DEFAULT_FR24_API_VERSION)),
+            CONF_AERODATABOX_GATEWAY: str(options.get(CONF_AERODATABOX_GATEWAY, DEFAULT_AERODATABOX_GATEWAY) or DEFAULT_AERODATABOX_GATEWAY),
+            CONF_AERODATABOX_RAPIDAPI_KEY: str(options.get(CONF_AERODATABOX_RAPIDAPI_KEY, "") or ""),
+            CONF_AERODATABOX_APIMARKET_KEY: str(options.get(CONF_AERODATABOX_APIMARKET_KEY, "") or ""),
             # Always hybrid/provider-first now
             CONF_DIRECTORY_SOURCE_MODE: "provider",
         }
 
     @staticmethod
     def _provider_usable(provider_name: str, options: dict[str, Any]) -> bool:
-        av_key = str(options.get(CONF_AVIATIONSTACK_KEY, "") or "").strip()
-        al_key = str(options.get(CONF_AIRLABS_KEY, "") or "").strip()
         fa_key = str(options.get(CONF_FLIGHTAPI_KEY, "") or "").strip()
-        fr24_key = str(options.get(CONF_FR24_API_KEY, "") or "").strip()
-        fr24_sandbox_key = str(options.get(CONF_FR24_SANDBOX_KEY, "") or "").strip()
-        fr24_use_sandbox = bool(options.get(CONF_FR24_USE_SANDBOX, False))
-        fr24_active_key = fr24_sandbox_key if fr24_use_sandbox and fr24_sandbox_key else fr24_key
-        os_user = str(options.get(CONF_OPENSKY_USERNAME, "") or "").strip()
-        os_pass = str(options.get(CONF_OPENSKY_PASSWORD, "") or "").strip()
+        adb_gateway = str(options.get(CONF_AERODATABOX_GATEWAY, DEFAULT_AERODATABOX_GATEWAY) or DEFAULT_AERODATABOX_GATEWAY).strip().lower()
+        adb_rapid = str(options.get(CONF_AERODATABOX_RAPIDAPI_KEY, "") or "").strip()
+        adb_market = str(options.get(CONF_AERODATABOX_APIMARKET_KEY, "") or "").strip()
 
+        if provider_name == "aerodatabox":
+            return bool(adb_market) if adb_gateway == "apimarket" else bool(adb_rapid)
         if provider_name == "flightapi":
             return bool(fa_key)
-        if provider_name == "aviationstack":
-            return bool(av_key)
-        if provider_name == "airlabs":
-            return bool(al_key)
-        if provider_name == "flightradar24":
-            return bool(fr24_active_key)
-        if provider_name == "opensky":
-            return bool(os_user or os_pass)
         return False
 
     def _selected_external_providers(self) -> set[str]:
-        schedule_provider = str(self._pending_options.get(CONF_SCHEDULE_PROVIDER, DEFAULT_SCHEDULE_PROVIDER)).strip().lower()
-        if schedule_provider == "auto":
-            schedule_provider = DEFAULT_SCHEDULE_PROVIDER
-        status_provider = str(self._pending_options.get(CONF_STATUS_PROVIDER, DEFAULT_STATUS_PROVIDER)).strip().lower()
+        primary = str(self._pending_options.get(CONF_PRIMARY_PROVIDER, DEFAULT_SCHEDULE_PROVIDER)).strip().lower()
         position_provider = str(self._pending_options.get(CONF_POSITION_PROVIDER, DEFAULT_POSITION_PROVIDER)).strip().lower()
-        if position_provider in ("same_as_status", "same", "status"):
-            position_provider = status_provider
 
         selected: set[str] = set()
-        if schedule_provider in EXTERNAL_PROVIDER_OPTIONS:
-            selected.add(schedule_provider)
-
-        if status_provider in EXTERNAL_PROVIDER_OPTIONS:
-            selected.add(status_provider)
+        if primary in EXTERNAL_PROVIDER_OPTIONS:
+            selected.add(primary)
         if position_provider in EXTERNAL_PROVIDER_OPTIONS:
             selected.add(position_provider)
 
@@ -265,16 +214,11 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
     def _validate_credentials(self) -> dict[str, str]:
         errors: dict[str, str] = {}
 
-        schedule_provider = str(self._pending_options.get(CONF_SCHEDULE_PROVIDER, DEFAULT_SCHEDULE_PROVIDER)).strip().lower()
-        if schedule_provider == "auto":
-            schedule_provider = DEFAULT_SCHEDULE_PROVIDER
-        status_provider = str(self._pending_options.get(CONF_STATUS_PROVIDER, DEFAULT_STATUS_PROVIDER)).strip().lower()
+        primary = str(self._pending_options.get(CONF_PRIMARY_PROVIDER, DEFAULT_SCHEDULE_PROVIDER)).strip().lower()
         position_provider = str(self._pending_options.get(CONF_POSITION_PROVIDER, DEFAULT_POSITION_PROVIDER)).strip().lower()
-        if position_provider in ("same_as_status", "same", "status"):
-            position_provider = status_provider
 
         usable_external = False
-        for p in (schedule_provider, status_provider, position_provider):
+        for p in (primary, position_provider):
             if p in EXTERNAL_PROVIDER_OPTIONS and self._provider_usable(p, self._pending_options):
                 usable_external = True
                 break
@@ -282,168 +226,62 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
         if not usable_external:
             errors["base"] = "at_least_one_provider_required"
 
-        if schedule_provider == "flightapi" and not self._provider_usable("flightapi", self._pending_options):
+        if primary == "aerodatabox" and not self._provider_usable("aerodatabox", self._pending_options):
+            adb_gateway = str(
+                self._pending_options.get(CONF_AERODATABOX_GATEWAY, DEFAULT_AERODATABOX_GATEWAY)
+            ).strip().lower()
+            key_field = CONF_AERODATABOX_APIMARKET_KEY if adb_gateway == "apimarket" else CONF_AERODATABOX_RAPIDAPI_KEY
+            errors[key_field] = "provider_key_required"
+        if primary == "flightapi" and not self._provider_usable("flightapi", self._pending_options):
             errors[CONF_FLIGHTAPI_KEY] = "provider_key_required"
-        if schedule_provider == "aviationstack" and not self._provider_usable("aviationstack", self._pending_options):
-            errors[CONF_AVIATIONSTACK_KEY] = "provider_key_required"
-        if schedule_provider == "airlabs" and not self._provider_usable("airlabs", self._pending_options):
-            errors[CONF_AIRLABS_KEY] = "provider_key_required"
-        if schedule_provider == "flightradar24" and not self._provider_usable("flightradar24", self._pending_options):
-            errors[CONF_FR24_API_KEY] = "provider_key_required"
 
-        if status_provider == "flightapi" and not self._provider_usable("flightapi", self._pending_options):
-            errors[CONF_FLIGHTAPI_KEY] = "provider_key_required"
-        if status_provider == "aviationstack" and not self._provider_usable("aviationstack", self._pending_options):
-            errors[CONF_AVIATIONSTACK_KEY] = "provider_key_required"
-        if status_provider == "airlabs" and not self._provider_usable("airlabs", self._pending_options):
-            errors[CONF_AIRLABS_KEY] = "provider_key_required"
-        if status_provider == "flightradar24" and not self._provider_usable("flightradar24", self._pending_options):
-            errors[CONF_FR24_API_KEY] = "provider_key_required"
-        if status_provider == "opensky" and not self._provider_usable("opensky", self._pending_options):
-            errors[CONF_OPENSKY_USERNAME] = "provider_key_required"
+        if position_provider == "aerodatabox" and not self._provider_usable("aerodatabox", self._pending_options):
+            adb_gateway = str(
+                self._pending_options.get(CONF_AERODATABOX_GATEWAY, DEFAULT_AERODATABOX_GATEWAY)
+            ).strip().lower()
+            key_field = CONF_AERODATABOX_APIMARKET_KEY if adb_gateway == "apimarket" else CONF_AERODATABOX_RAPIDAPI_KEY
+            errors[key_field] = "provider_key_required"
 
         return errors
 
     async def async_step_init(self, user_input=None) -> FlowResult:
         self._pending_options = self._defaults_from_existing()
-        return await self.async_step_mode()
-
-    async def async_step_mode(self, user_input=None) -> FlowResult:
-        if user_input is not None:
-            mode = str(user_input.get(CONF_PROVIDER_MODE, "single")).strip().lower()
-            self._pending_options[CONF_PROVIDER_MODE] = "multi" if mode == "multi" else "single"
-            return await self.async_step_providers()
-
-        mode_selector = selector.SelectSelector(
-            selector.SelectSelectorConfig(
-                options=[
-                    selector.SelectOptionDict(value="single", label="Single provider"),
-                    selector.SelectOptionDict(value="multi", label="Multi provider"),
-                ],
-                multiple=False,
-                mode=selector.SelectSelectorMode.DROPDOWN,
-            )
-        )
-
-        schema = vol.Schema(
-            {
-                vol.Required(
-                    CONF_PROVIDER_MODE,
-                    default=self._pending_options.get(CONF_PROVIDER_MODE, "single"),
-                ): mode_selector,
-            }
-        )
-        return self.async_show_form(step_id="mode", data_schema=schema)
+        return await self.async_step_providers()
 
     async def async_step_providers(self, user_input=None) -> FlowResult:
-        mode = str(self._pending_options.get(CONF_PROVIDER_MODE, "single")).strip().lower()
-
         if user_input is not None:
-            if mode == "single":
-                primary = str(user_input.get(CONF_PRIMARY_PROVIDER, DEFAULT_SCHEDULE_PROVIDER)).strip().lower()
-                if primary not in SINGLE_PROVIDER_OPTIONS:
-                    primary = DEFAULT_SCHEDULE_PROVIDER
-                self._pending_options[CONF_PRIMARY_PROVIDER] = primary
-                self._pending_options[CONF_SCHEDULE_PROVIDER] = primary
-                self._pending_options[CONF_STATUS_PROVIDER] = primary
-                enable_position = bool(user_input.get(CONF_ENABLE_POSITION, False))
-                self._pending_options[CONF_ENABLE_POSITION] = enable_position
-                if enable_position and primary in POSITION_CAPABLE_PROVIDER_OPTIONS:
-                    self._pending_options[CONF_POSITION_PROVIDER] = primary
-                else:
-                    self._pending_options[CONF_POSITION_PROVIDER] = "none"
+            primary = str(user_input.get(CONF_PRIMARY_PROVIDER, DEFAULT_SCHEDULE_PROVIDER)).strip().lower()
+            if primary not in SINGLE_PROVIDER_OPTIONS:
+                primary = DEFAULT_SCHEDULE_PROVIDER
+            self._pending_options[CONF_PRIMARY_PROVIDER] = primary
+            self._pending_options[CONF_SCHEDULE_PROVIDER] = primary
+            self._pending_options[CONF_STATUS_PROVIDER] = primary
+            enable_position = bool(user_input.get(CONF_ENABLE_POSITION, False))
+            self._pending_options[CONF_ENABLE_POSITION] = enable_position
+            if enable_position and primary in POSITION_CAPABLE_PROVIDER_OPTIONS:
+                self._pending_options[CONF_POSITION_PROVIDER] = primary
             else:
-                self._pending_options[CONF_SCHEDULE_PROVIDER] = str(
-                    user_input.get(CONF_SCHEDULE_PROVIDER, DEFAULT_SCHEDULE_PROVIDER)
-                ).strip().lower()
-                self._pending_options[CONF_STATUS_PROVIDER] = str(
-                    user_input.get(CONF_STATUS_PROVIDER, DEFAULT_STATUS_PROVIDER)
-                ).strip().lower()
-                self._pending_options[CONF_POSITION_PROVIDER] = str(
-                    user_input.get(CONF_POSITION_PROVIDER, DEFAULT_POSITION_PROVIDER)
-                ).strip().lower()
+                self._pending_options[CONF_POSITION_PROVIDER] = "none"
             return await self.async_step_credentials()
 
         primary_selector = selector.SelectSelector(
             selector.SelectSelectorConfig(
                 options=[
+                    selector.SelectOptionDict(value="aerodatabox", label="AeroDataBox"),
                     selector.SelectOptionDict(value="flightapi", label="FlightAPI.io"),
-                    selector.SelectOptionDict(value="aviationstack", label="Aviationstack"),
-                    selector.SelectOptionDict(value="airlabs", label="AirLabs"),
-                    selector.SelectOptionDict(value="flightradar24", label="Flightradar24"),
                 ],
                 multiple=False,
                 mode=selector.SelectSelectorMode.DROPDOWN,
             )
         )
-        schedule_selector = selector.SelectSelector(
-            selector.SelectSelectorConfig(
-                options=[
-                    selector.SelectOptionDict(value="flightapi", label="FlightAPI.io"),
-                    selector.SelectOptionDict(value="aviationstack", label="Aviationstack"),
-                    selector.SelectOptionDict(value="airlabs", label="AirLabs"),
-                    selector.SelectOptionDict(value="flightradar24", label="Flightradar24"),
-                    selector.SelectOptionDict(value="mock", label="Mock"),
-                ],
-                multiple=False,
-                mode=selector.SelectSelectorMode.DROPDOWN,
-            )
+        primary = str(self._pending_options.get(CONF_PRIMARY_PROVIDER, DEFAULT_SCHEDULE_PROVIDER)).strip().lower()
+        enable_position = bool(self._pending_options.get(CONF_ENABLE_POSITION, False))
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_PRIMARY_PROVIDER, default=primary): primary_selector,
+                vol.Optional(CONF_ENABLE_POSITION, default=enable_position): bool,
+            }
         )
-        status_selector = selector.SelectSelector(
-            selector.SelectSelectorConfig(
-                options=[
-                    selector.SelectOptionDict(value="flightapi", label="FlightAPI.io"),
-                    selector.SelectOptionDict(value="aviationstack", label="Aviationstack"),
-                    selector.SelectOptionDict(value="airlabs", label="AirLabs"),
-                    selector.SelectOptionDict(value="flightradar24", label="Flightradar24"),
-                    selector.SelectOptionDict(value="opensky", label="OpenSky"),
-                    selector.SelectOptionDict(value="local", label="Local (no API)"),
-                    selector.SelectOptionDict(value="mock", label="Mock"),
-                ],
-                multiple=False,
-                mode=selector.SelectSelectorMode.DROPDOWN,
-            )
-        )
-        position_selector = selector.SelectSelector(
-            selector.SelectSelectorConfig(
-                options=[
-                    selector.SelectOptionDict(value="same_as_status", label="Same as status provider"),
-                    selector.SelectOptionDict(value="flightradar24", label="Flightradar24"),
-                    selector.SelectOptionDict(value="airlabs", label="AirLabs"),
-                    selector.SelectOptionDict(value="opensky", label="OpenSky"),
-                    selector.SelectOptionDict(value="none", label="Disabled"),
-                ],
-                multiple=False,
-                mode=selector.SelectSelectorMode.DROPDOWN,
-            )
-        )
-
-        if mode == "single":
-            primary = str(self._pending_options.get(CONF_PRIMARY_PROVIDER, DEFAULT_SCHEDULE_PROVIDER)).strip().lower()
-            enable_position = bool(self._pending_options.get(CONF_ENABLE_POSITION, False))
-            schema = vol.Schema(
-                {
-                    vol.Required(CONF_PRIMARY_PROVIDER, default=primary): primary_selector,
-                    vol.Optional(CONF_ENABLE_POSITION, default=enable_position): bool,
-                }
-            )
-        else:
-            schema = vol.Schema(
-                {
-                    vol.Required(
-                        CONF_SCHEDULE_PROVIDER,
-                        default=self._pending_options.get(CONF_SCHEDULE_PROVIDER, DEFAULT_SCHEDULE_PROVIDER),
-                    ): schedule_selector,
-                    vol.Required(
-                        CONF_STATUS_PROVIDER,
-                        default=self._pending_options.get(CONF_STATUS_PROVIDER, DEFAULT_STATUS_PROVIDER),
-                    ): status_selector,
-                    vol.Required(
-                        CONF_POSITION_PROVIDER,
-                        default=self._pending_options.get(CONF_POSITION_PROVIDER, DEFAULT_POSITION_PROVIDER),
-                    ): position_selector,
-                }
-            )
 
         return self.async_show_form(step_id="providers", data_schema=schema)
 
@@ -453,18 +291,13 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             for key in (
                 CONF_FLIGHTAPI_KEY,
-                CONF_AVIATIONSTACK_KEY,
-                CONF_AIRLABS_KEY,
-                CONF_OPENSKY_USERNAME,
-                CONF_OPENSKY_PASSWORD,
-                CONF_FR24_API_KEY,
-                CONF_FR24_SANDBOX_KEY,
+                CONF_AERODATABOX_RAPIDAPI_KEY,
+                CONF_AERODATABOX_APIMARKET_KEY,
             ):
                 if key in user_input:
                     self._pending_options[key] = str(user_input.get(key, "") or "").strip()
-            self._pending_options[CONF_FR24_USE_SANDBOX] = bool(
-                user_input.get(CONF_FR24_USE_SANDBOX, self._pending_options.get(CONF_FR24_USE_SANDBOX, False))
-            )
+            if CONF_AERODATABOX_GATEWAY in user_input:
+                self._pending_options[CONF_AERODATABOX_GATEWAY] = str(user_input.get(CONF_AERODATABOX_GATEWAY) or DEFAULT_AERODATABOX_GATEWAY).strip().lower()
 
             errors = self._validate_credentials()
             if errors:
@@ -476,19 +309,36 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
     def _credentials_schema(self, providers: set[str]) -> vol.Schema:
         schema_dict: dict[Any, Any] = {}
 
+        if "aerodatabox" in providers:
+            schema_dict[
+                vol.Optional(
+                    CONF_AERODATABOX_GATEWAY,
+                    default=self._pending_options.get(CONF_AERODATABOX_GATEWAY, DEFAULT_AERODATABOX_GATEWAY),
+                )
+            ] = selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value="rapidapi", label="RapidAPI"),
+                        selector.SelectOptionDict(value="apimarket", label="API.Market"),
+                    ],
+                    multiple=False,
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            )
+            schema_dict[
+                vol.Optional(
+                    CONF_AERODATABOX_RAPIDAPI_KEY,
+                    default=self._pending_options.get(CONF_AERODATABOX_RAPIDAPI_KEY, ""),
+                )
+            ] = str
+            schema_dict[
+                vol.Optional(
+                    CONF_AERODATABOX_APIMARKET_KEY,
+                    default=self._pending_options.get(CONF_AERODATABOX_APIMARKET_KEY, ""),
+                )
+            ] = str
         if "flightapi" in providers:
             schema_dict[vol.Optional(CONF_FLIGHTAPI_KEY, default=self._pending_options.get(CONF_FLIGHTAPI_KEY, ""))] = str
-        if "aviationstack" in providers:
-            schema_dict[vol.Optional(CONF_AVIATIONSTACK_KEY, default=self._pending_options.get(CONF_AVIATIONSTACK_KEY, ""))] = str
-        if "airlabs" in providers:
-            schema_dict[vol.Optional(CONF_AIRLABS_KEY, default=self._pending_options.get(CONF_AIRLABS_KEY, ""))] = str
-        if "opensky" in providers:
-            schema_dict[vol.Optional(CONF_OPENSKY_USERNAME, default=self._pending_options.get(CONF_OPENSKY_USERNAME, ""))] = str
-            schema_dict[vol.Optional(CONF_OPENSKY_PASSWORD, default=self._pending_options.get(CONF_OPENSKY_PASSWORD, ""))] = str
-        if "flightradar24" in providers:
-            schema_dict[vol.Optional(CONF_FR24_USE_SANDBOX, default=self._pending_options.get(CONF_FR24_USE_SANDBOX, False))] = bool
-            schema_dict[vol.Optional(CONF_FR24_API_KEY, default=self._pending_options.get(CONF_FR24_API_KEY, ""))] = str
-            schema_dict[vol.Optional(CONF_FR24_SANDBOX_KEY, default=self._pending_options.get(CONF_FR24_SANDBOX_KEY, ""))] = str
 
         if not schema_dict:
             schema_dict[vol.Optional(CONF_FLIGHTAPI_KEY, default=self._pending_options.get(CONF_FLIGHTAPI_KEY, ""))] = str
@@ -847,24 +697,25 @@ class FlightDashboardOptionsFlowHandler(config_entries.OptionsFlow):
                 self._pending_options.get(CONF_DELAY_GRACE_MINUTES, DEFAULT_DELAY_GRACE_MINUTES)
             )
 
-            options[CONF_AVIATIONSTACK_KEY] = str(self._pending_options.get(CONF_AVIATIONSTACK_KEY, "") or "").strip()
-            options[CONF_AIRLABS_KEY] = str(self._pending_options.get(CONF_AIRLABS_KEY, "") or "").strip()
             options[CONF_FLIGHTAPI_KEY] = str(self._pending_options.get(CONF_FLIGHTAPI_KEY, "") or "").strip()
-            options[CONF_OPENSKY_USERNAME] = str(self._pending_options.get(CONF_OPENSKY_USERNAME, "") or "").strip()
-            options[CONF_OPENSKY_PASSWORD] = str(self._pending_options.get(CONF_OPENSKY_PASSWORD, "") or "").strip()
-            options[CONF_FR24_API_KEY] = str(self._pending_options.get(CONF_FR24_API_KEY, "") or "").strip()
-            options[CONF_FR24_SANDBOX_KEY] = str(self._pending_options.get(CONF_FR24_SANDBOX_KEY, "") or "").strip()
-            options[CONF_FR24_USE_SANDBOX] = bool(self._pending_options.get(CONF_FR24_USE_SANDBOX, False))
+            options[CONF_AERODATABOX_GATEWAY] = str(
+                self._pending_options.get(CONF_AERODATABOX_GATEWAY, DEFAULT_AERODATABOX_GATEWAY) or DEFAULT_AERODATABOX_GATEWAY
+            ).strip().lower()
+            options[CONF_AERODATABOX_RAPIDAPI_KEY] = str(
+                self._pending_options.get(CONF_AERODATABOX_RAPIDAPI_KEY, "") or ""
+            ).strip()
+            options[CONF_AERODATABOX_APIMARKET_KEY] = str(
+                self._pending_options.get(CONF_AERODATABOX_APIMARKET_KEY, "") or ""
+            ).strip()
 
             return self.async_create_entry(title="", data=options)
 
-        mode = str(self._pending_options.get(CONF_PROVIDER_MODE, "single")).strip().lower()
         schedule = str(self._pending_options.get(CONF_SCHEDULE_PROVIDER, DEFAULT_SCHEDULE_PROVIDER))
         status = str(self._pending_options.get(CONF_STATUS_PROVIDER, DEFAULT_STATUS_PROVIDER))
         position = str(self._pending_options.get(CONF_POSITION_PROVIDER, DEFAULT_POSITION_PROVIDER))
 
         placeholders = {
-            "mode": "Single" if mode == "single" else "Multi",
+            "mode": "Single",
             "schedule": schedule,
             "status": status,
             "position": position,

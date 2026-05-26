@@ -98,10 +98,6 @@ def _normalize_status_state(provider_state: str | None, provider: str | None) ->
     if s in ("unknown", "n/a", "na"):
         return "Unknown"
 
-    # Provider-specific nuances (if needed)
-    if (provider or "").lower() == "opensky":
-        return "En Route"
-
     return "Unknown"
 
 
@@ -156,6 +152,26 @@ def apply_status(flight: dict[str, Any], status: dict[str, Any] | None) -> dict[
         arr["terminal"] = status.get("terminal_arr")
     if status.get("gate_arr"):
         arr["gate"] = status.get("gate_arr")
+
+    # optional ops enrichment
+    if status.get("dep_check_in_counters"):
+        dep["check_in_counters"] = status.get("dep_check_in_counters")
+    if status.get("dep_boarding_time"):
+        dep["boarding_time"] = status.get("dep_boarding_time")
+    if status.get("dep_door_time"):
+        dep["door_time"] = status.get("dep_door_time")
+    if status.get("dep_off_block_time"):
+        dep["off_block_time"] = status.get("dep_off_block_time")
+    if status.get("dep_takeoff_time"):
+        dep["takeoff_time"] = status.get("dep_takeoff_time")
+    if status.get("arr_landing_time"):
+        arr["landing_time"] = status.get("arr_landing_time")
+    if status.get("arr_on_block_time"):
+        arr["on_block_time"] = status.get("arr_on_block_time")
+    if status.get("arr_baggage_claim"):
+        arr["baggage_claim"] = status.get("arr_baggage_claim")
+    if status.get("arr_belt"):
+        arr["belt"] = status.get("arr_belt")
 
     # optional airline/airport identity enrichment
     # Keep airline name only at flight level to avoid duplication

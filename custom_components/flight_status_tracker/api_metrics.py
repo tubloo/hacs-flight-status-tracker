@@ -21,8 +21,6 @@ _SAVE_DEBOUNCE = timedelta(seconds=30)
 
 def _normalize_provider(provider: str | None) -> str:
     p = (provider or "").strip().lower()
-    if p == "fr24":
-        return "flightradar24"
     return p or "unknown"
 
 
@@ -60,30 +58,12 @@ def _default_provider_stats() -> dict[str, Any]:
 def _default_metrics() -> dict[str, Any]:
     return {
         "total_calls": 0,
+        "month_key": None,
+        "monthly_calls": 0,
+        "monthly_by_provider": {},
         "providers": {},
         "updated_at": None,
     }
-
-
-def _merge_loaded(data: dict[str, Any]) -> dict[str, Any]:
-    out = _default_metrics()
-    out["total_calls"] = int(data.get("total_calls") or 0)
-    out["updated_at"] = data.get("updated_at")
-    raw = data.get("providers")
-    if isinstance(raw, dict):
-        providers: dict[str, Any] = {}
-        for name, stats in raw.items():
-            if not isinstance(stats, dict):
-                continue
-            p = _default_provider_stats()
-            for k in p:
-                if k == "last_call_at":
-                    p[k] = stats.get(k)
-                else:
-                    p[k] = int(stats.get(k) or 0)
-            providers[str(name)] = p
-        out["providers"] = providers
-    return out
 
 
 def _domain_data(hass: HomeAssistant) -> dict[str, Any]:
@@ -106,7 +86,7 @@ async def async_init_api_metrics(hass: HomeAssistant) -> None:
         return
     store = Store(hass, _STORE_VERSION, _STORE_KEY)
     loaded = await store.async_load()
-    metrics = _merge_loaded(loaded) if isinstance(loaded, dict) else _default_metrics()
+    metrics = loaded if isinstance(loaded, dict) else _default_metrics()
     data["api_metrics_store"] = store
     data["api_metrics"] = metrics
     data["api_metrics_initialized"] = True
@@ -181,6 +161,12 @@ def _record_api_call_on_loop(
     provider_key = _normalize_provider(provider)
     flow_key = _normalize_flow(flow)
     outcome_key = _normalize_outcome(outcome)
+    now = dt_util.utcnow()
+    month_key = now.strftime("%Y-%m")
+    if metrics.get("month_key") != month_key:
+        metrics["month_key"] = month_key
+        metrics["monthly_calls"] = 0
+        metrics["monthly_by_provider"] = {}
 
     stats = providers.get(provider_key)
     if not isinstance(stats, dict):
@@ -188,6 +174,12 @@ def _record_api_call_on_loop(
         providers[provider_key] = stats
 
     metrics["total_calls"] = int(metrics.get("total_calls") or 0) + 1
+    metrics["monthly_calls"] = int(metrics.get("monthly_calls") or 0) + 1
+    monthly_by_provider = metrics.get("monthly_by_provider")
+    if not isinstance(monthly_by_provider, dict):
+        monthly_by_provider = {}
+        metrics["monthly_by_provider"] = monthly_by_provider
+    monthly_by_provider[provider_key] = int(monthly_by_provider.get(provider_key) or 0) + 1
     stats["total"] = int(stats.get("total") or 0) + 1
 
     if flow_key in ("status", "schedule", "position", "directory", "usage"):
@@ -200,7 +192,7 @@ def _record_api_call_on_loop(
     else:
         stats["unknown"] = int(stats.get("unknown") or 0) + 1
 
-    now_iso = dt_util.utcnow().isoformat()
+    now_iso = now.isoformat()
     stats["last_call_at"] = now_iso
     metrics["updated_at"] = now_iso
 
