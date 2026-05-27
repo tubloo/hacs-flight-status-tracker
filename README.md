@@ -140,6 +140,7 @@ If a card is not listed in HACS, add its GitHub repo under **HACS > Frontend > C
   
 ## Upgrade Notes
 
+- `v2.1.2`: Added canonical pre-departure status mapping so AeroDataBox states `CheckIn`, `Boarding`, and `GateClosed` are normalized to `Scheduled` instead of `Unknown`.
 - `v2.1.1`: Reliability hardening for continuous operation. Added rate-limit retry handling (`429` with `Retry-After` + jitter) for AeroDataBox/FlightAPI, improved scheduler/watchdog rebuild safety under burst triggers, fixed schedule lookup rate-limit error surfacing, and improved direct add-flight failure notifications.
 - `v2.1.0`: Provider model simplified to supported providers (`aerodatabox`, `flightapi`) with single-provider schedule selection, updated provider-first directory behavior/docs, and refreshed diagnostics/Lovelace documentation.
 - `v2.0.2`: Refresh scheduling hardening. If smart per-flight scheduling yields no `next_refresh` while active flights still exist, a fallback refresh is now scheduled to keep updates alive. Also improves `status_updated_at` semantics so successful provider responses with usable signal fields advance the flight “last updated” timestamp.

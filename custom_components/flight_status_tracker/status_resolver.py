@@ -85,7 +85,18 @@ def _normalize_status_state(provider_state: str | None, provider: str | None) ->
     s = raw.lower()
 
     # Generic mappings (canonical set for UI)
-    if s in ("scheduled", "schedule", "plan", "planned"):
+    if s in (
+        "scheduled",
+        "schedule",
+        "plan",
+        "planned",
+        "checkin",
+        "check-in",
+        "boarding",
+        "gateclosed",
+        "gate_closed",
+        "gate closed",
+    ):
         return "Scheduled"
     if s in ("active", "enroute", "en route", "en-route", "in air", "in-air", "airborne", "departed", "cruising"):
         return "En Route"

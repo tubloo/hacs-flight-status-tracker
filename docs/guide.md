@@ -171,6 +171,10 @@ This gives a single, consistent attribute model across providers for dashboard c
 
 ## Upgrade Notes
 
+### v2.1.2
+
+- Added canonical pre-departure status mapping so AeroDataBox states `CheckIn`, `Boarding`, and `GateClosed` normalize to `Scheduled`.
+
 ### v2.1.1
 
 - Added rate-limit retry behavior for AeroDataBox and FlightAPI (`429` only, `Retry-After` aware, jittered backoff).
