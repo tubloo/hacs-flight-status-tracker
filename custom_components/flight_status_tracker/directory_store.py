@@ -72,13 +72,18 @@ async def async_set_airport(hass: HomeAssistant, iata: str, data: dict[str, Any]
 async def async_set_airline(hass: HomeAssistant, iata: str, data: dict[str, Any]) -> None:
     cache = await async_load_cache(hass)
     airlines = cache.setdefault("airlines", {})
+    current = airlines.get(iata) if isinstance(airlines.get(iata), dict) else {}
     # ensure a stable logo_url is cached for local lookups
     logo = data.get("logo") or data.get("logo_url") or data.get("airline_logo_url")
     if not logo:
         code = str(iata).strip().upper()
         if code:
             logo = f"https://pics.avs.io/64/64/{code}.png"
-    airlines[iata] = {**data, "logo_url": logo, "fetched_at": _utcnow_iso()}
+    # Preserve fields not present in partial updates (e.g. aircraft_image_url enrichment).
+    merged = {**current, **data}
+    merged["logo_url"] = logo
+    merged["fetched_at"] = _utcnow_iso()
+    airlines[iata] = merged
     await async_save_cache(hass, cache)
 
 

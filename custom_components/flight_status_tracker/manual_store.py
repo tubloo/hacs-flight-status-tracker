@@ -156,6 +156,7 @@ async def async_add_manual_flight(
     notes: str | None = None,
     airline_name: str | None = None,
     airline_logo_url: str | None = None,
+    aircraft_image_url: str | None = None,
     aircraft_type: str | None = None,
     dep_airport_name: str | None = None,
     dep_airport_city: str | None = None,
@@ -196,6 +197,7 @@ async def async_add_manual_flight(
         "flight_number": flight_number,
         "airline_name": airline_name,
         "airline_logo_url": airline_logo_url,
+        "aircraft_image_url": aircraft_image_url,
         "aircraft_type": aircraft_type,
         "dep": {
             "airport": {
@@ -258,6 +260,7 @@ async def async_add_manual_flight_record(hass: HomeAssistant, flight: dict[str, 
         notes=flight.get("notes"),
         airline_name=flight.get("airline_name"),
         airline_logo_url=flight.get("airline_logo_url"),
+        aircraft_image_url=flight.get("aircraft_image_url"),
         aircraft_type=flight.get("aircraft_type"),
         dep_airport_name=dep_air.get("name"),
         dep_airport_city=dep_air.get("city"),

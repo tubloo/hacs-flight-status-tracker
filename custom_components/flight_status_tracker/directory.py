@@ -107,6 +107,17 @@ def _pick_str(data: dict[str, Any], keys: tuple[str, ...]) -> str | None:
     return None
 
 
+def _normalize_image_url(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    out = value.strip()
+    if not out:
+        return None
+    if out.startswith("http://") or out.startswith("https://"):
+        return out
+    return None
+
+
 def _extract_candidates(payload: Any) -> list[dict[str, Any]]:
     if isinstance(payload, list):
         return [x for x in payload if isinstance(x, dict)]
@@ -689,6 +700,38 @@ async def get_airline(hass: HomeAssistant, options: dict[str, Any], iata: str) -
         if provider:
             return provider
     return await _get_airline_inbuilt(hass, iata)
+
+
+async def upsert_airline_aircraft_image(
+    hass: HomeAssistant,
+    airline_iata: str,
+    aircraft_image_url: str | None,
+) -> bool:
+    """Store aircraft image URL under airline directory when missing.
+
+    Returns True when directory cache was updated.
+    """
+    iata = (airline_iata or "").strip().upper()
+    url = _normalize_image_url(aircraft_image_url)
+    if not iata or not url:
+        return False
+
+    cached = await async_get_airline(hass, iata)
+    if cached and isinstance(cached, dict):
+        existing = _normalize_image_url(cached.get("aircraft_image_url"))
+        if existing:
+            return False
+        payload = {**cached, "aircraft_image_url": url}
+    else:
+        payload = {
+            "iata": iata,
+            "source": "provider_enriched",
+            "logo_url": airline_logo_url(iata),
+            "aircraft_image_url": url,
+        }
+
+    await async_set_airline(hass, iata, payload)
+    return True
 
 
 async def warm_directory_cache(hass: HomeAssistant, options: dict[str, Any], flights: list[dict[str, Any]]) -> None:

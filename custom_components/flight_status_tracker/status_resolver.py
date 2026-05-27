@@ -222,6 +222,8 @@ def apply_status(flight: dict[str, Any], status: dict[str, Any] | None) -> dict[
     status.pop("airline_name", None)
     if status.get("airline_logo_url") and not flight.get("airline_logo_url"):
         flight["airline_logo_url"] = status.get("airline_logo_url")
+    if status.get("aircraft_image_url") and not flight.get("aircraft_image_url"):
+        flight["aircraft_image_url"] = status.get("aircraft_image_url")
 
     if status.get("dep_airport_name") and not dep_air.get("name"):
         dep_air["name"] = status.get("dep_airport_name")

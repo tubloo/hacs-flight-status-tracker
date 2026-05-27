@@ -330,6 +330,11 @@ class AeroDataBoxStatusProvider:
             "airline_name": airline_obj.get("name"),
             "airline_code": airline_obj.get("iata") or airline,
             "aircraft_type": aircraft.get("model"),
+            "aircraft_image_url": (
+                ((aircraft.get("image") or {}).get("url") if isinstance(aircraft.get("image"), dict) else None)
+                or aircraft.get("imageUrl")
+                or aircraft.get("photoUrl")
+            ),
             "airline_logo_url": None,
             "last_updated": best.get("lastUpdatedUtc") or datetime.utcnow().isoformat(),
         }

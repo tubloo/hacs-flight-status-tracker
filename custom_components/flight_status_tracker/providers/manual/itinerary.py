@@ -124,6 +124,7 @@ class ManualItineraryProvider:
                     "flight_number": raw.get("flight_number"),
                     "airline_name": raw.get("airline_name"),
                     "airline_logo_url": airline_logo_url,
+                    "aircraft_image_url": raw.get("aircraft_image_url"),
                     "aircraft_type": raw.get("aircraft_type"),
                     "travellers": raw.get("travellers") or [],
                     "status_state": raw.get("status_state") or (status or {}).get("state") or "Unknown",

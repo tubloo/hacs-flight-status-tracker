@@ -35,7 +35,7 @@ from .const import (
 )
 from .manual_store import async_add_manual_flight_record
 from .schedule_lookup import lookup_schedule
-from .directory import airline_logo_url, get_airport, get_airline
+from .directory import airline_logo_url, get_airport, get_airline, upsert_airline_aircraft_image
 from .tz_short import tz_short_name
 from .preview_store import async_get_preview, async_set_preview
 
@@ -288,12 +288,23 @@ async def async_register_preview_services(
             dep_air = (dep.get("airport") or {})
             arr_air = (arr.get("airport") or {})
 
-            if f.get("airline_code") and not f.get("airline_name"):
+            if f.get("airline_code") and (not f.get("airline_name") or not f.get("airline_logo_url") or not f.get("aircraft_image_url")):
                 airline_info = await get_airline(hass, options, f.get("airline_code"))
                 if airline_info:
                     f["airline_name"] = airline_info.get("name") or f.get("airline_name")
                     if not f.get("airline_logo_url"):
                         f["airline_logo_url"] = airline_info.get("logo") or airline_info.get("logo_url") or f.get("airline_logo_url")
+                    if not f.get("aircraft_image_url"):
+                        f["aircraft_image_url"] = airline_info.get("aircraft_image_url") or f.get("aircraft_image_url")
+
+            # Cache-first enrichment for aircraft image URL:
+            # if preview already has provider image and directory is missing it, persist for future reuse.
+            if f.get("airline_code") and f.get("aircraft_image_url"):
+                await upsert_airline_aircraft_image(
+                    hass,
+                    f.get("airline_code"),
+                    f.get("aircraft_image_url"),
+                )
 
             if dep_air.get("iata") and (not dep_air.get("name") or not dep_air.get("city") or not dep_air.get("tz")):
                 airport = await get_airport(hass, options, dep_air.get("iata"))
