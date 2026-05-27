@@ -369,7 +369,18 @@ async def lookup_schedule(
                 reason = details.get("error")
                 block_for = details.get("retry_after") or (24 * 60 * 60 if reason == "quota_exceeded" else 900)
                 set_block(hass, "flightapi", block_for, reason)
-                details = None
+                if reason == "quota_exceeded":
+                    return {
+                        "error": "provider_error",
+                        "hint": "FlightAPI.io quota exceeded. Try again later.",
+                        "provider": "flightapi",
+                    }
+                if reason == "rate_limited":
+                    return {
+                        "error": "provider_error",
+                        "hint": "FlightAPI.io rate limit reached. Try again later.",
+                        "provider": "flightapi",
+                    }
             if isinstance(details, dict) and details.get("error"):
                 err = details.get("error")
                 if log_errors:

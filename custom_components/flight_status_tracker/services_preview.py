@@ -41,6 +41,18 @@ from .preview_store import async_get_preview, async_set_preview
 
 _LOGGER = logging.getLogger(__name__)
 
+async def _notify(hass: HomeAssistant, title: str, message: str) -> None:
+    try:
+        await hass.services.async_call(
+            "persistent_notification",
+            "create",
+            {"title": title, "message": message},
+            blocking=False,
+        )
+    except Exception:
+        _LOGGER.info("%s: %s", title, message)
+
+
 SERVICE_SCHEMA_PREVIEW = vol.Schema(
     {
         vol.Optional("query"): cv.string,            # legacy: "AI 157"
@@ -432,8 +444,10 @@ async def async_register_preview_services(
         notes = str(call.data.get("notes", "")).strip() or None
 
         if not date_str:
+            await _notify(hass, "Flight Status Tracker", "Add flight failed: date is required.")
             return
         if not airline or not flight_number:
+            await _notify(hass, "Flight Status Tracker", "Add flight failed: airline and flight number are required.")
             return
 
         result = await lookup_schedule(
@@ -448,13 +462,19 @@ async def async_register_preview_services(
             flight["travellers"] = travellers
             flight["notes"] = notes
             try:
-                flight_key = await async_add_manual_flight_record(hass, flight)
+                await async_add_manual_flight_record(hass, flight)
                 return
             except Exception as e:
                 _LOGGER.exception("Add flight failed")
+                await _notify(hass, "Flight Status Tracker", f"Add flight failed: {e}")
                 return
 
         hint = result.get("hint") if isinstance(result, dict) else None
+        await _notify(
+            hass,
+            "Flight Status Tracker",
+            f"Add flight failed: {hint or 'No matching flight found or provider error.'}",
+        )
 
     for service in (SERVICE_PREVIEW_FLIGHT, SERVICE_CONFIRM_ADD, SERVICE_CLEAR_PREVIEW, SERVICE_ADD_FLIGHT):
         if hass.services.has_service(DOMAIN, service):

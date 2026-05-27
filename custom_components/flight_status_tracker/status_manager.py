@@ -397,6 +397,7 @@ async def async_update_statuses(
 
     # Refresh due flights (sequential to limit API calls)
     for f in due:
+        flight_now = dt_util.utcnow()
         state = (f.get("status_state") or "unknown").lower()
         if state in ("arrived", "cancelled", "canceled", "landed"):
             key = f.get("flight_key")
@@ -471,14 +472,14 @@ async def async_update_statuses(
                     # status observation for "last updated" semantics.
                     f["status_updated_at"] = fetched_at_iso
                     apply_status(f, status)
-                    _coerce_state_by_time(f, now)
-                    _apply_assumed_arrival(f, now)
+                    _coerce_state_by_time(f, flight_now)
+                    _apply_assumed_arrival(f, flight_now)
             else:
                 f["status"] = status
                 f["status_updated_at"] = fetched_at_iso
                 apply_status(f, status)
-                _coerce_state_by_time(f, now)
-                _apply_assumed_arrival(f, now)
+                _coerce_state_by_time(f, flight_now)
+                _apply_assumed_arrival(f, flight_now)
 
         else:
             # No status from provider: keep last data but surface error
@@ -490,7 +491,7 @@ async def async_update_statuses(
             prev_status["error_message"] = "Provider returned no status"
             f["status"] = prev_status
 
-        _apply_assumed_arrival(f, now)
+        _apply_assumed_arrival(f, flight_now)
 
         delay_state, delay_minutes = _compute_delay_status(f, grace_minutes)
         f["delay_status"] = delay_state
@@ -498,11 +499,13 @@ async def async_update_statuses(
         f["delay_minutes"] = delay_minutes
         f.update(_compute_durations(f))
         # Compute next refresh time
-        refresh_seconds = compute_next_refresh_seconds(f, now, poll_cfg)
+        refresh_seconds = compute_next_refresh_seconds(f, flight_now, poll_cfg)
         if refresh_seconds is None:
             cache.pop(key, None)
             continue
-        next_dt = now + timedelta(seconds=refresh_seconds)
+        # Anchor next-check to the actual completion time of this flight refresh
+        # to avoid immediate re-due loops when a cycle takes long.
+        next_dt = dt_util.utcnow() + timedelta(seconds=refresh_seconds)
         cache[key] = {
             "status": f.get("status") if isinstance(f.get("status"), dict) else status,
             # Keep the timestamp of the latest successful status fetch.

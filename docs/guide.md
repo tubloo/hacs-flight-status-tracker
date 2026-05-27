@@ -171,6 +171,12 @@ This gives a single, consistent attribute model across providers for dashboard c
 
 ## Upgrade Notes
 
+### v2.1.1
+
+- Added rate-limit retry behavior for AeroDataBox and FlightAPI (`429` only, `Retry-After` aware, jittered backoff).
+- Hardened rebuild/watchdog flow to avoid overlapping rebuild races and improve scheduler continuity under burst triggers.
+- Improved direct add-flight failure feedback and provider rate-limit/quota error surfacing in schedule lookup.
+
 ### v2.1.0
 
 - Provider scope reduced to supported providers only: `aerodatabox` and `flightapi`.

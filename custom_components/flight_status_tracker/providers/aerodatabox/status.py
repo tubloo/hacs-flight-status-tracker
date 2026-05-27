@@ -6,7 +6,11 @@ Supports both marketplace gateways:
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+import logging
+import random
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -16,6 +20,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .._shared.status_base import FlightStatus
+
+_LOGGER = logging.getLogger(__name__)
+
+_MAX_RATE_LIMIT_RETRIES = 2
 
 
 class AeroDataBoxStatusProvider:
@@ -207,17 +215,40 @@ class AeroDataBoxStatusProvider:
         params = {"withLocation": "true", "withAircraftImage": "true", "dateLocalRole": "Departure"}
         session = async_get_clientsession(self.hass)
 
-        try:
-            async with session.get(url, headers=headers, params=params, timeout=25) as resp:
-                if resp.status == 204:
-                    return None
-                payload = await resp.json(content_type=None)
-                retry_after = resp.headers.get("Retry-After")
-                status_code = resp.status
-        except aiohttp.ClientError:
-            return FlightStatus(provider="aerodatabox", state="unknown", details={"provider": "aerodatabox", "error": "network"})
-        except TimeoutError:
-            return FlightStatus(provider="aerodatabox", state="unknown", details={"provider": "aerodatabox", "error": "timeout"})
+        payload: Any = None
+        retry_after: str | None = None
+        status_code: int | None = None
+        last_err: str | None = None
+        for attempt in range(_MAX_RATE_LIMIT_RETRIES + 1):
+            try:
+                async with session.get(url, headers=headers, params=params, timeout=25) as resp:
+                    if resp.status == 204:
+                        return None
+                    payload = await resp.json(content_type=None)
+                    retry_after = resp.headers.get("Retry-After")
+                    status_code = resp.status
+            except aiohttp.ClientError:
+                return FlightStatus(provider="aerodatabox", state="unknown", details={"provider": "aerodatabox", "error": "network"})
+            except TimeoutError:
+                return FlightStatus(provider="aerodatabox", state="unknown", details={"provider": "aerodatabox", "error": "timeout"})
+
+            if status_code != 429 or attempt >= _MAX_RATE_LIMIT_RETRIES:
+                break
+            wait_s = self._retry_wait_seconds(retry_after, attempt)
+            last_err = "rate_limited"
+            _LOGGER.warning(
+                "AeroDataBox 429 for %s%s on %s, retrying in %.2fs (attempt %s/%s)",
+                airline,
+                number,
+                date_local,
+                wait_s,
+                attempt + 1,
+                _MAX_RATE_LIMIT_RETRIES,
+            )
+            await asyncio.sleep(wait_s)
+
+        if status_code is None:
+            return FlightStatus(provider="aerodatabox", state="unknown", details={"provider": "aerodatabox", "error": last_err or "provider_error"})
 
         if status_code >= 400:
             err = "provider_error"
@@ -307,3 +338,21 @@ class AeroDataBoxStatusProvider:
         if pos:
             details["position"] = {k: v for k, v in pos.items() if v is not None}
         return FlightStatus(provider="aerodatabox", state=details["state"], details=details)
+
+    @staticmethod
+    def _retry_wait_seconds(retry_after: str | None, attempt: int) -> float:
+        if isinstance(retry_after, str) and retry_after.strip():
+            raw = retry_after.strip()
+            if raw.isdigit():
+                return max(0.2, float(raw))
+            try:
+                retry_dt = parsedate_to_datetime(raw)
+                if retry_dt.tzinfo is None:
+                    retry_dt = retry_dt.replace(tzinfo=timezone.utc)
+                delta = (retry_dt - datetime.now(timezone.utc)).total_seconds()
+                if delta > 0:
+                    return max(0.2, delta)
+            except Exception:
+                pass
+        # 1.5s, 3.0s with 0-0.4s jitter.
+        return (1.5 * (2**attempt)) + random.uniform(0.0, 0.4)

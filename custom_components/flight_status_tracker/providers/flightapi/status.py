@@ -6,10 +6,12 @@ Endpoint used: GET /airline/{apiKey}?num=XX&date=YYYYMMDD&name=YY
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+from email.utils import parsedate_to_datetime
 from zoneinfo import ZoneInfo
 from typing import Any
 import asyncio
 import logging
+import random
 
 import aiohttp
 
@@ -19,6 +21,24 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .._shared.status_base import FlightStatus
 
 _LOGGER = logging.getLogger(__name__)
+_MAX_RATE_LIMIT_RETRIES = 2
+
+
+def _retry_wait_seconds(retry_after: str | None, attempt: int) -> float:
+    if isinstance(retry_after, str) and retry_after.strip():
+        raw = retry_after.strip()
+        if raw.isdigit():
+            return max(0.2, float(raw))
+        try:
+            retry_dt = parsedate_to_datetime(raw)
+            if retry_dt.tzinfo is None:
+                retry_dt = retry_dt.replace(tzinfo=timezone.utc)
+            delta = (retry_dt - datetime.now(timezone.utc)).total_seconds()
+            if delta > 0:
+                return max(0.2, delta)
+        except Exception:
+            pass
+    return (1.5 * (2**attempt)) + random.uniform(0.0, 0.4)
 
 
 def _mask_key(key: str) -> str:
@@ -250,22 +270,45 @@ class FlightAPIStatusProvider:
 
         session = async_get_clientsession(self.hass)
         _LOGGER.debug("FlightAPI request: %s params=%s key=%s", url, params, _mask_key(self.api_key))
-        try:
-            async with session.get(url, params=params, timeout=25) as resp:
-                payload = await resp.json(content_type=None)
-                retry_after = resp.headers.get("Retry-After")
-            _LOGGER.debug("FlightAPI response: status=%s type=%s", resp.status, type(payload).__name__)
-        except asyncio.TimeoutError:
-            _LOGGER.warning("FlightAPI request timed out")
-            details = {"provider": "flightapi", "state": "unknown", "error": "timeout"}
-            return FlightStatus(provider="flightapi", state="unknown", details=details)
-        except aiohttp.ClientError as err:
-            _LOGGER.warning("FlightAPI request failed: %s", err)
-            details = {"provider": "flightapi", "state": "unknown", "error": "network"}
+        payload: Any = None
+        retry_after: str | None = None
+        status_code: int | None = None
+        for attempt in range(_MAX_RATE_LIMIT_RETRIES + 1):
+            try:
+                async with session.get(url, params=params, timeout=25) as resp:
+                    payload = await resp.json(content_type=None)
+                    retry_after = resp.headers.get("Retry-After")
+                    status_code = resp.status
+                _LOGGER.debug("FlightAPI response: status=%s type=%s", status_code, type(payload).__name__)
+            except asyncio.TimeoutError:
+                _LOGGER.warning("FlightAPI request timed out")
+                details = {"provider": "flightapi", "state": "unknown", "error": "timeout"}
+                return FlightStatus(provider="flightapi", state="unknown", details=details)
+            except aiohttp.ClientError as err:
+                _LOGGER.warning("FlightAPI request failed: %s", err)
+                details = {"provider": "flightapi", "state": "unknown", "error": "network"}
+                return FlightStatus(provider="flightapi", state="unknown", details=details)
+
+            if status_code != 429 or attempt >= _MAX_RATE_LIMIT_RETRIES:
+                break
+            wait_s = _retry_wait_seconds(retry_after, attempt)
+            _LOGGER.warning(
+                "FlightAPI 429 for %s%s on %s, retrying in %.2fs (attempt %s/%s)",
+                airline,
+                number,
+                yyyymmdd,
+                wait_s,
+                attempt + 1,
+                _MAX_RATE_LIMIT_RETRIES,
+            )
+            await asyncio.sleep(wait_s)
+
+        if status_code is None:
+            details = {"provider": "flightapi", "state": "unknown", "error": "provider_error"}
             return FlightStatus(provider="flightapi", state="unknown", details=details)
 
-        if resp.status >= 400:
-            err_type = _error_type(resp.status, payload)
+        if status_code >= 400:
+            err_type = _error_type(status_code, payload)
             details = {"provider": "flightapi", "state": "unknown", "error": err_type}
             if retry_after and retry_after.isdigit():
                 details["retry_after"] = int(retry_after)

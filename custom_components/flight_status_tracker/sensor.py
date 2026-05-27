@@ -4,6 +4,7 @@ Sensor rebuilds automatically when manual flights change (dispatcher signal).
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 import hashlib
 import inspect
@@ -565,6 +566,8 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
         self._last_rebuild_error: str | None = None
         self._watchdog_last_check_at: datetime | None = None
         self._watchdog_last_kick_at: datetime | None = None
+        self._rebuild_lock = asyncio.Lock()
+        self._rebuild_pending = False
 
     async def async_added_to_hass(self) -> None:
         # Rebuild whenever manual flights are updated
@@ -659,27 +662,42 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
 
     async def _run_rebuild_safe(self, reason: str) -> None:
         """Run rebuild and ensure we always retry after an unexpected failure."""
-        try:
-            await self._rebuild()
-            self._last_rebuild_at = dt_util.utcnow()
-            self._last_rebuild_error = None
-        except Exception:
-            self._last_rebuild_error = f"rebuild_failed:{reason}"
-            _LOGGER.exception("Flight list rebuild failed (%s)", reason)
-            if self._next_refresh_unsub:
+        if self._rebuild_lock.locked():
+            # Coalesce burst triggers (manual update + scheduled + watchdog) into
+            # one additional rebuild once the active run finishes.
+            self._rebuild_pending = True
+            return
+
+        run_reason = reason
+        async with self._rebuild_lock:
+            while True:
+                self._rebuild_pending = False
                 try:
-                    self._next_refresh_unsub()
+                    await self._rebuild()
+                    self._last_rebuild_at = dt_util.utcnow()
+                    self._last_rebuild_error = None
                 except Exception:
-                    _LOGGER.debug("Failed to clear existing refresh subscription", exc_info=True)
-                self._next_refresh_unsub = None
-            retry_at = dt_util.utcnow() + timedelta(minutes=5)
-            self._next_refresh_at = retry_at
+                    self._last_rebuild_error = f"rebuild_failed:{run_reason}"
+                    _LOGGER.exception("Flight list rebuild failed (%s)", run_reason)
+                    if self._next_refresh_unsub:
+                        try:
+                            self._next_refresh_unsub()
+                        except Exception:
+                            _LOGGER.debug("Failed to clear existing refresh subscription", exc_info=True)
+                        self._next_refresh_unsub = None
+                    retry_at = dt_util.utcnow() + timedelta(minutes=5)
+                    self._next_refresh_at = retry_at
 
-            @callback
-            def _retry(_now) -> None:
-                self.hass.async_create_task(self._run_rebuild_safe("retry_after_error"))
+                    @callback
+                    def _retry(_now) -> None:
+                        self.hass.async_create_task(self._run_rebuild_safe("retry_after_error"))
 
-            self._next_refresh_unsub = async_track_point_in_utc_time(self.hass, _retry, retry_at)
+                    self._next_refresh_unsub = async_track_point_in_utc_time(self.hass, _retry, retry_at)
+                    break
+
+                if not self._rebuild_pending:
+                    break
+                run_reason = "coalesced_update"
 
     async def _watchdog_check(self) -> None:
         self._watchdog_last_check_at = dt_util.utcnow()
@@ -699,14 +717,19 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
             return
 
         stalled = False
+        stalled_reason = ""
         if self._next_refresh_at is not None and now > (self._next_refresh_at + WATCHDOG_OVERDUE_GRACE):
             stalled = True
+            stalled_reason = "refresh_overdue"
         elif self._next_refresh_at is not None and self._next_refresh_unsub is None:
             stalled = True
+            stalled_reason = "missing_refresh_subscription"
         elif self._last_rebuild_at is None:
             stalled = True
+            stalled_reason = "never_rebuilt"
         elif now - self._last_rebuild_at > WATCHDOG_STALE_REBUILD:
             stalled = True
+            stalled_reason = "stale_rebuild"
 
         if not stalled:
             return
@@ -714,7 +737,10 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
             return
 
         self._watchdog_last_kick_at = now
-        _LOGGER.warning("Watchdog kick: forcing safe rebuild due to stale scheduler state")
+        _LOGGER.warning(
+            "Watchdog kick: forcing safe rebuild due to stale scheduler state (%s)",
+            stalled_reason or "unknown",
+        )
         await self._run_rebuild_safe("watchdog_kick")
 
     async def _warm_directory_cache_safe(self, options: dict[str, Any], flights: list[dict[str, Any]]) -> None:
