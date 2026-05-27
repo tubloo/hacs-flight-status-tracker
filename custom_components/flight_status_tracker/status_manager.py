@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+import logging
 from zoneinfo import ZoneInfo
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
@@ -14,20 +16,49 @@ from .directory import get_airport
 from .status_providers import async_fetch_status
 
 
-STATUS_CACHE_KEY = "status_cache"
+_LOGGER = logging.getLogger(__name__)
+_STATUS_REFRESH_STORE_VERSION = 1
+_STATUS_REFRESH_STORE_KEY = f"{DOMAIN}.status_refresh_state"
 CONF_DELAY_GRACE_MINUTES = "delay_grace_minutes"
 
 
-def _status_cache(hass: HomeAssistant) -> dict[str, dict[str, Any]]:
-    return hass.data.setdefault(DOMAIN, {}).setdefault(STATUS_CACHE_KEY, {})
+def _status_store(hass: HomeAssistant) -> Store:
+    return Store(hass, _STATUS_REFRESH_STORE_VERSION, _STATUS_REFRESH_STORE_KEY)
 
 
-def clear_status_cache(hass: HomeAssistant, flight_key: str | None = None) -> None:
-    cache = _status_cache(hass)
-    if flight_key:
-        cache.pop(flight_key, None)
-    else:
-        cache.clear()
+async def _load_status_cache(hass: HomeAssistant) -> dict[str, dict[str, Any]]:
+    try:
+        data = await _status_store(hass).async_load()
+    except Exception:
+        _LOGGER.warning("Failed to load persisted status refresh state; using empty state", exc_info=True)
+        return {}
+    cache = data.get("cache") if isinstance(data, dict) else None
+    if not isinstance(cache, dict):
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for key, value in cache.items():
+        if isinstance(key, str) and isinstance(value, dict):
+            out[key] = dict(value)
+    return out
+
+
+async def _save_status_cache(hass: HomeAssistant, cache: dict[str, dict[str, Any]]) -> None:
+    try:
+        await _status_store(hass).async_save({"cache": cache})
+    except Exception:
+        _LOGGER.warning("Failed to persist status refresh state", exc_info=True)
+
+
+async def async_clear_status_cache(hass: HomeAssistant, flight_key: str | None = None) -> None:
+    try:
+        cache = await _load_status_cache(hass)
+        if flight_key:
+            cache.pop(flight_key, None)
+        else:
+            cache.clear()
+        await _save_status_cache(hass, cache)
+    except Exception:
+        _LOGGER.warning("Failed to clear persisted status refresh state", exc_info=True)
 
 
 def _parse_dt(val: Any) -> datetime | None:
@@ -325,14 +356,18 @@ def compute_next_refresh_seconds(
 
 
 async def async_update_statuses(
-    hass: HomeAssistant, options: dict[str, Any], flights: list[dict[str, Any]]
+    hass: HomeAssistant,
+    options: dict[str, Any],
+    flights: list[dict[str, Any]],
+    *,
+    refresh_due: bool = True,
 ) -> tuple[list[dict[str, Any]], datetime | None]:
     """Apply cached status, refresh due flights, and return next refresh time.
 
     This avoids a fixed polling interval and instead computes a per-flight
     next_check to reduce API usage while keeping nearby flights fresh.
     """
-    cache = _status_cache(hass)
+    cache = await _load_status_cache(hass)
     now = dt_util.utcnow()
     configured_provider = (options.get("status_provider") or "aerodatabox").lower()
     grace_minutes = int(options.get(CONF_DELAY_GRACE_MINUTES, 10))
@@ -394,6 +429,14 @@ async def async_update_statuses(
             due.append(f)
         else:
             next_times.append(dt_util.as_utc(next_check_dt))
+
+    if not refresh_due:
+        next_time = min(next_times) if next_times else None
+        if due:
+            # Keep startup/provider-light passes call-free but ensure overdue
+            # flights are refreshed shortly after boot in normal cycle.
+            next_time = now + timedelta(seconds=10)
+        return flights, next_time
 
     # Refresh due flights (sequential to limit API calls)
     for f in due:
@@ -514,5 +557,16 @@ async def async_update_statuses(
         }
         next_times.append(next_dt)
 
+    # Drop cache entries for flights that are no longer present.
+    active_keys = {
+        f.get("flight_key")
+        for f in flights
+        if isinstance(f, dict) and isinstance(f.get("flight_key"), str) and f.get("flight_key")
+    }
+    for cached_key in list(cache.keys()):
+        if cached_key not in active_keys:
+            cache.pop(cached_key, None)
+
+    await _save_status_cache(hass, cache)
     next_time = min(next_times) if next_times else None
     return flights, next_time

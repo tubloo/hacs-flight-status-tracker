@@ -1,8 +1,4 @@
-"""Constants for Flight Status Tracker.
-
-This file is intentionally a "compat superset" so older/newer module versions
-can import the names they expect without crashing HA at import time.
-"""
+"""Constants for Flight Status Tracker."""
 from __future__ import annotations
 
 DOMAIN = "flight_status_tracker"
@@ -31,11 +27,6 @@ SERVICE_REMOVE_MANUAL_FLIGHT = "remove_manual_flight"
 SERVICE_CLEAR_MANUAL_FLIGHTS = "clear_manual_flights"
 SERVICE_REFRESH_NOW = "refresh_now"
 SERVICE_PRUNE_LANDED = "prune_landed"
-
-# Aliases some modules may import
-SERVICE_ADD = SERVICE_ADD_MANUAL_FLIGHT
-SERVICE_REMOVE = SERVICE_REMOVE_MANUAL_FLIGHT
-SERVICE_CLEAR = SERVICE_CLEAR_MANUAL_FLIGHTS
 
 # --- Service names: preview flow ---
 SERVICE_PREVIEW_FLIGHT = "preview_flight"

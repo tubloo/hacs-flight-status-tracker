@@ -11,7 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, EVENT_UPDATED
-from .services import SERVICE_CLEAR, SERVICE_REMOVE
+from .const import SERVICE_CLEAR_MANUAL_FLIGHTS, SERVICE_REMOVE_MANUAL_FLIGHT
 from .const import SERVICE_CLEAR_PREVIEW, SERVICE_PREVIEW_FLIGHT, SERVICE_REFRESH_NOW, SERVICE_PRUNE_LANDED
 from .preview_store import async_get_preview, async_set_preview
 from .manual_store import async_add_manual_flight_record
@@ -93,7 +93,7 @@ class FlightDashboardRemoveSelectedFlightButton(ButtonEntity):
             return
 
         await self.hass.services.async_call(
-            DOMAIN, SERVICE_REMOVE, {"flight_key": flight_key}, blocking=True
+            DOMAIN, SERVICE_REMOVE_MANUAL_FLIGHT, {"flight_key": flight_key}, blocking=True
         )
 
 
@@ -107,7 +107,7 @@ class FlightDashboardClearManualFlightsButton(ButtonEntity):
         self.hass = hass
 
     async def async_press(self) -> None:
-        await self.hass.services.async_call(DOMAIN, SERVICE_CLEAR, {}, blocking=True)
+        await self.hass.services.async_call(DOMAIN, SERVICE_CLEAR_MANUAL_FLIGHTS, {}, blocking=True)
 
 
 class FlightDashboardRefreshNowButton(ButtonEntity):
@@ -185,18 +185,20 @@ class FlightDashboardConfirmAddPreviewButton(ButtonEntity):
                 break
 
         if visible:
+            dep_iata = (((added.get("dep") or {}).get("airport") or {}).get("iata") or "")
+            arr_iata = (((added.get("arr") or {}).get("airport") or {}).get("iata") or "")
             await _notify(
                 self.hass,
                 "Flight Status Tracker - Added",
                 f"Now visible:\n{added.get('airline_code')} {added.get('flight_number')} "
-                f"{added.get('dep_airport')} → {added.get('arr_airport')}\n"
+                f"{dep_iata} → {arr_iata}\n"
                 f"Flight key: {flight_key}",
             )
             return
 
         # Not visible: check if filtered out by include_past_hours
         include_past_hours = _get_include_past_hours(self.hass)
-        dep = _parse_iso(added.get("scheduled_departure"))
+        dep = _parse_iso(((added.get("dep") or {}).get("scheduled")))
         if dep:
             dep_utc = dt_util.as_utc(dep) if dep.tzinfo else dt_util.as_utc(dt_util.as_local(dep))
             now = dt_util.utcnow()
@@ -222,7 +224,6 @@ class FlightDashboardConfirmAddPreviewButton(ButtonEntity):
 
 
 class FlightDashboardClearAddPreviewButton(ButtonEntity):
-    # Legacy compatibility entity kept so existing dashboards/automations do not break.
     _attr_name = "Flight Status Tracker Clear Add Preview"
     _attr_unique_id = "flight_status_tracker_clear_add_preview"
     _attr_icon = "mdi:close-circle-outline"

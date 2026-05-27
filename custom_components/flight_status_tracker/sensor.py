@@ -432,6 +432,8 @@ WATCHDOG_CHECK_INTERVAL = timedelta(minutes=2)
 WATCHDOG_STALE_REBUILD = timedelta(minutes=15)
 WATCHDOG_OVERDUE_GRACE = timedelta(minutes=3)
 WATCHDOG_KICK_DEBOUNCE = timedelta(minutes=5)
+MANUAL_FULL_REFRESH_DEBOUNCE = timedelta(seconds=8)
+MANUAL_FULL_REFRESH_MIN_INTERVAL = timedelta(seconds=45)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities) -> None:
@@ -449,7 +451,8 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities) -> N
         FlightDashboardAddPreviewSensor = None  # type: ignore
     if FlightDashboardAddPreviewSensor:
         entities.append(FlightDashboardAddPreviewSensor(hass, entry))
-    async_add_entities(entities, True)
+    # Do not block setup on initial updates; rebuild runs in background.
+    async_add_entities(entities, False)
     hass.data.setdefault(DOMAIN, {}).setdefault("upcoming_sensors", {})[entry.entry_id] = upcoming
 
 
@@ -566,14 +569,34 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
         self._last_rebuild_error: str | None = None
         self._watchdog_last_check_at: datetime | None = None
         self._watchdog_last_kick_at: datetime | None = None
+        self._last_full_refresh_at: datetime | None = None
         self._rebuild_lock = asyncio.Lock()
         self._rebuild_pending = False
+        self._pending_reason: str | None = None
+        self._manual_deferred_unsub: Callable[[], None] | None = None
 
     async def async_added_to_hass(self) -> None:
         # Rebuild whenever manual flights are updated
         @callback
         def _on_manual_updated() -> None:
-            self.hass.async_create_task(self._run_rebuild_safe("manual_update"))
+            self.hass.async_create_task(self._run_rebuild_safe("manual_update_fast"))
+
+            @callback
+            def _manual_deferred(_now) -> None:
+                now = dt_util.utcnow()
+                if self._last_full_refresh_at and (now - self._last_full_refresh_at) < MANUAL_FULL_REFRESH_MIN_INTERVAL:
+                    return
+                self.hass.async_create_task(self._run_rebuild_safe("manual_update_full"))
+
+            if self._manual_deferred_unsub:
+                try:
+                    self._manual_deferred_unsub()
+                except Exception:
+                    _LOGGER.debug("Failed to clear previous manual deferred refresh", exc_info=True)
+                self._manual_deferred_unsub = None
+            self._manual_deferred_unsub = async_track_point_in_utc_time(
+                self.hass, _manual_deferred, dt_util.utcnow() + MANUAL_FULL_REFRESH_DEBOUNCE
+            )
 
         self._unsub = async_dispatcher_connect(self.hass, SIGNAL_MANUAL_FLIGHTS_UPDATED, _on_manual_updated)
 
@@ -583,8 +606,7 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
 
         self._watchdog_unsub = async_track_time_interval(self.hass, _watchdog_tick, WATCHDOG_CHECK_INTERVAL)
 
-        # Rebuild now
-        await self._run_rebuild_safe("startup")
+        await self._run_rebuild_safe("startup_fast")
 
     async def async_will_remove_from_hass(self) -> None:
         if self._unsub:
@@ -596,6 +618,9 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
         if self._watchdog_unsub:
             self._watchdog_unsub()
             self._watchdog_unsub = None
+        if self._manual_deferred_unsub:
+            self._manual_deferred_unsub()
+            self._manual_deferred_unsub = None
         sensors = self.hass.data.get(DOMAIN, {}).get("upcoming_sensors") or {}
         if isinstance(sensors, dict):
             sensors.pop(self.entry.entry_id, None)
@@ -608,10 +633,20 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
+        active_entity_ids = [
+            ent.entity_id
+            for fk, ent in self._flight_entities.items()
+            if fk
+            and ent is not None
+            and ent.entity_id
+            and any(isinstance(f, dict) and f.get("flight_key") == fk for f in self._flights)
+        ]
         return {
             "schema_version": SCHEMA_VERSION,
             "flights_total": len(self._flights),
             "flight_keys": [f.get("flight_key") for f in self._flights if isinstance(f, dict) and f.get("flight_key")],
+            "flight_entity_ids": active_entity_ids,
+            "flights": self._flights,
             "last_rebuild_at": self._last_rebuild_at.isoformat() if self._last_rebuild_at else None,
             "next_refresh_at": self._next_refresh_at.isoformat() if self._next_refresh_at else None,
             "last_rebuild_error": self._last_rebuild_error,
@@ -662,19 +697,30 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
 
     async def _run_rebuild_safe(self, reason: str) -> None:
         """Run rebuild and ensure we always retry after an unexpected failure."""
+        light_reasons = {"startup_fast", "manual_update_fast"}
+        fast_reasons = {"startup_fast", "manual_update_fast"}
+
         if self._rebuild_lock.locked():
             # Coalesce burst triggers (manual update + scheduled + watchdog) into
             # one additional rebuild once the active run finishes.
             self._rebuild_pending = True
+            # Preserve highest-priority pending reason so fast paths stay fast.
+            if self._pending_reason in fast_reasons:
+                return
+            self._pending_reason = reason
             return
 
         run_reason = reason
         async with self._rebuild_lock:
             while True:
                 self._rebuild_pending = False
+                self._pending_reason = None
                 try:
-                    await self._rebuild()
+                    light_mode = run_reason in light_reasons
+                    await self._rebuild(light=light_mode)
                     self._last_rebuild_at = dt_util.utcnow()
+                    if not light_mode:
+                        self._last_full_refresh_at = self._last_rebuild_at
                     self._last_rebuild_error = None
                 except Exception:
                     self._last_rebuild_error = f"rebuild_failed:{run_reason}"
@@ -697,11 +743,13 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
 
                 if not self._rebuild_pending:
                     break
-                run_reason = "coalesced_update"
+                run_reason = self._pending_reason or "coalesced_update"
 
     async def _watchdog_check(self) -> None:
         self._watchdog_last_check_at = dt_util.utcnow()
         now = dt_util.utcnow()
+        if self._rebuild_lock.locked():
+            return
         if not self._flights:
             return
 
@@ -721,9 +769,6 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
         if self._next_refresh_at is not None and now > (self._next_refresh_at + WATCHDOG_OVERDUE_GRACE):
             stalled = True
             stalled_reason = "refresh_overdue"
-        elif self._next_refresh_at is not None and self._next_refresh_unsub is None:
-            stalled = True
-            stalled_reason = "missing_refresh_subscription"
         elif self._last_rebuild_at is None:
             stalled = True
             stalled_reason = "never_rebuilt"
@@ -749,15 +794,8 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
         except Exception:
             _LOGGER.debug("Directory warmup failed", exc_info=True)
 
-    async def _rebuild(self) -> None:
+    async def _rebuild(self, *, light: bool = False) -> None:
         """Rebuild the flight list and schedule the next smart refresh."""
-        if self._next_refresh_unsub:
-            try:
-                self._next_refresh_unsub()
-            except Exception:
-                _LOGGER.debug("Failed to clear previous refresh schedule", exc_info=True)
-            self._next_refresh_unsub = None
-
         now = dt_util.utcnow()
         options = dict(self.entry.options)
         include_past = int(options.get("include_past_hours", 24))
@@ -821,7 +859,13 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
         if max_flights and len(flights) > max_flights:
             flights = flights[:max_flights]
 
-        flights, next_refresh = await async_update_statuses(self.hass, options, flights)
+        if light:
+            # Fast path: hydrate last persisted status without provider calls.
+            flights, next_refresh = await async_update_statuses(
+                self.hass, options, flights, refresh_due=False
+            )
+        else:
+            flights, next_refresh = await async_update_statuses(self.hass, options, flights)
 
         # Optional: auto-remove arrived/cancelled flights after arrival time
         if auto_prune:
@@ -895,6 +939,13 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
             prev_airline = (prev or {}).get("airline_code")
             airline_changed = bool(prev_airline and airline_code and prev_airline != airline_code)
             updates: dict[str, Any] = {}
+            if light:
+                dep["airport"] = dep_air
+                arr["airport"] = arr_air
+                flight["dep"] = dep
+                flight["arr"] = arr
+                flight["ui"] = _build_ui_block(flight, now, options)
+                continue
             needs_airline = bool(airline_code)
             if needs_airline:
                 airline = await get_airline(self.hass, options, airline_code)
@@ -1053,6 +1104,13 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
                 )
 
         if next_refresh:
+            if self._next_refresh_unsub:
+                try:
+                    self._next_refresh_unsub()
+                except Exception:
+                    _LOGGER.debug("Failed to clear previous refresh schedule", exc_info=True)
+                self._next_refresh_unsub = None
+
             @callback
             def _scheduled_refresh(_now) -> None:
                 self.hass.async_create_task(self._run_rebuild_safe("scheduled_refresh"))
@@ -1060,6 +1118,12 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
             self._next_refresh_unsub = async_track_point_in_utc_time(self.hass, _scheduled_refresh, next_refresh)
             self._next_refresh_at = next_refresh
         else:
+            if self._next_refresh_unsub:
+                try:
+                    self._next_refresh_unsub()
+                except Exception:
+                    _LOGGER.debug("Failed to clear previous refresh schedule", exc_info=True)
+                self._next_refresh_unsub = None
             self._next_refresh_at = None
 
 

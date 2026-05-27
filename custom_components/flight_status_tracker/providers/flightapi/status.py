@@ -245,8 +245,7 @@ class FlightAPIStatusProvider:
         dep_air = dep.get("airport") or {}
         dep_tz = dep_air.get("tz")
         sched_local = dep.get("scheduled_local")
-        # Prefer scheduled_departure if provided, else dep.scheduled
-        sched = flight.get("scheduled_departure") or dep.get("scheduled")
+        sched = dep.get("scheduled")
         yyyymmdd = _date_to_yyyymmdd(sched_local)
         if not yyyymmdd and sched:
             d_local = _local_date_from_sched(sched, dep_tz)
@@ -357,8 +356,8 @@ class FlightAPIStatusProvider:
         # Handle payload with "flights" list (schedule-only format)
         segments = _pick_segments_from_flights(payload)
         if segments:
-            dep_filter = (flight.get("dep_airport") or flight.get("dep_iata") or "").strip().upper()
-            arr_filter = (flight.get("arr_airport") or flight.get("arr_iata") or "").strip().upper()
+            dep_filter = ((dep.get("airport") or {}).get("iata") or "").strip().upper()
+            arr_filter = (((flight.get("arr") or {}).get("airport") or {}).get("iata") or "").strip().upper()
             filtered = [
                 s for s in segments
                 if (not dep_filter or (s.get("dep_iata") or "").upper() == dep_filter)
@@ -392,8 +391,8 @@ class FlightAPIStatusProvider:
 
         dep_iata = (dep_obj or {}).get("airportCode")
         arr_iata = (arr_obj or {}).get("airportCode")
-        dep_filter = (flight.get("dep_airport") or flight.get("dep_iata") or "").strip().upper()
-        arr_filter = (flight.get("arr_airport") or flight.get("arr_iata") or "").strip().upper()
+        dep_filter = ((dep.get("airport") or {}).get("iata") or "").strip().upper()
+        arr_filter = (((flight.get("arr") or {}).get("airport") or {}).get("iata") or "").strip().upper()
         if dep_filter and dep_iata and dep_iata.strip().upper() != dep_filter:
             return None
         if arr_filter and arr_iata and arr_iata.strip().upper() != arr_filter:

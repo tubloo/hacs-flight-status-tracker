@@ -1,14 +1,4 @@
-"""Service registrations for manual flight management.
-
-Backwards compatibility:
-- button.py imports SERVICE_CLEAR and SERVICE_REMOVE from here
-- older code may import SERVICE_ADD too
-
-So we export those constants as aliases.
-
-Also: __init__.py calls async_register_services(hass, options_provider),
-so we accept an optional 2nd arg.
-"""
+"""Service registrations for manual flight management."""
 from __future__ import annotations
 
 import logging
@@ -32,7 +22,7 @@ from .const import (
 )
 from .manual_store import async_add_manual_flight, async_remove_manual_flight, async_clear_manual_flights
 from .selected import get_upcoming_flights
-from .status_manager import clear_status_cache
+from .status_manager import async_clear_status_cache
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -51,12 +41,6 @@ def notify(hass: HomeAssistant, message: str, *, title: str = "Flight Status Tra
     except Exception:
         _LOGGER.info("%s: %s", title, message)
 
-# --- Backwards-compatible exports expected by other platforms ---
-SERVICE_ADD = SERVICE_ADD_MANUAL_FLIGHT
-SERVICE_REMOVE = SERVICE_REMOVE_MANUAL_FLIGHT
-SERVICE_CLEAR = SERVICE_CLEAR_MANUAL_FLIGHTS
-# --------------------------------------------------------------
-
 
 ADD_SCHEMA = vol.Schema(
     {
@@ -64,11 +48,7 @@ ADD_SCHEMA = vol.Schema(
         vol.Required("flight_number"): cv.string,
         vol.Required("dep_airport"): cv.string,
         vol.Required("arr_airport"): cv.string,
-        # legacy names
-        vol.Optional("scheduled_departure"): cv.string,
-        vol.Optional("scheduled_arrival"): cv.string,
-        # canonical names (accepted)
-        vol.Optional("dep_scheduled"): cv.string,
+        vol.Required("dep_scheduled"): cv.string,
         vol.Optional("arr_scheduled"): cv.string,
         vol.Optional("travellers"): vol.Any(cv.string, [cv.string]),
         vol.Optional("notes"): cv.string,
@@ -86,7 +66,7 @@ PRUNE_SCHEMA = vol.Schema(
 
 
 async def async_register_services(hass: HomeAssistant, _options_provider: Any | None = None) -> None:
-    """Register services. Accepts an unused optional options_provider for compatibility."""
+    """Register services."""
 
     async def _add(call: ServiceCall) -> None:
         data = ADD_SCHEMA(dict(call.data))
@@ -98,8 +78,6 @@ async def async_register_services(hass: HomeAssistant, _options_provider: Any | 
                 flight_number=data["flight_number"],
                 dep_airport=data["dep_airport"],
                 arr_airport=data["arr_airport"],
-                scheduled_departure=data.get("scheduled_departure"),
-                scheduled_arrival=data.get("scheduled_arrival"),
                 dep_scheduled=data.get("dep_scheduled"),
                 arr_scheduled=data.get("arr_scheduled"),
                 travellers=data.get("travellers"),
@@ -126,7 +104,7 @@ async def async_register_services(hass: HomeAssistant, _options_provider: Any | 
 
     async def _refresh(call: ServiceCall) -> None:
         _ = REFRESH_SCHEMA(dict(call.data))
-        clear_status_cache(hass)
+        await async_clear_status_cache(hass)
         hass.data.setdefault(DOMAIN, {})["force_status_refresh"] = True
         sensors = hass.data.get(DOMAIN, {}).get("upcoming_sensors") or {}
         if isinstance(sensors, dict) and sensors:

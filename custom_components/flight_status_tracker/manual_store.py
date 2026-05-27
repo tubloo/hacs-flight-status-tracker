@@ -6,9 +6,7 @@ This module is provider-agnostic: it stores whatever details are provided, but
 at minimum needs airline_code, flight_number, dep_airport, arr_airport, and
 scheduled times.
 
-It supports BOTH legacy timestamp fields and canonical dep/arr forms:
-- legacy: scheduled_departure / scheduled_arrival
-- canonical: dep.scheduled / arr.scheduled
+Manual records are stored in canonical schema form (dep/arr blocks).
 """
 from __future__ import annotations
 
@@ -22,6 +20,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, SIGNAL_MANUAL_FLIGHTS_UPDATED
 from .status_resolver import _normalize_status_state
+from .status_manager import async_clear_status_cache
 
 _STORE_KEY = f"{DOMAIN}.manual_flights"
 _STORE_VERSION = 1
@@ -151,9 +150,7 @@ async def async_add_manual_flight(
     flight_number: str,
     dep_airport: str,
     arr_airport: str,
-    scheduled_departure: str | None = None,
-    scheduled_arrival: str | None = None,
-    dep_scheduled: str | None = None,
+    dep_scheduled: str,
     arr_scheduled: str | None = None,
     travellers: Any = None,
     notes: str | None = None,
@@ -174,9 +171,8 @@ async def async_add_manual_flight(
     dep_airport = str(dep_airport).strip().upper()
     arr_airport = str(arr_airport).strip().upper()
 
-    # Allow either legacy or canonical scheduled timestamps
-    dep_sched_val = dep_scheduled or scheduled_departure
-    arr_sched_val = arr_scheduled or scheduled_arrival
+    dep_sched_val = dep_scheduled
+    arr_sched_val = arr_scheduled
 
     dep_dt = _parse_dt(dep_sched_val)
     arr_dt = _parse_dt(arr_sched_val)
@@ -185,7 +181,7 @@ async def async_add_manual_flight(
     arr_iso = _as_iso_utc(arr_dt)
 
     if not dep_iso:
-        raise ValueError("scheduled_departure/dep_scheduled is required and must be a valid datetime")
+        raise ValueError("dep_scheduled is required and must be a valid datetime")
 
     dep_date = dep_iso[:10]  # YYYY-MM-DD
     flight_key = _mk_flight_key(airline_code, flight_number, dep_airport, dep_date)
@@ -201,17 +197,24 @@ async def async_add_manual_flight(
         "airline_name": airline_name,
         "airline_logo_url": airline_logo_url,
         "aircraft_type": aircraft_type,
-        "dep_airport": dep_airport,
-        "arr_airport": arr_airport,
-        "dep_airport_name": dep_airport_name,
-        "dep_airport_city": dep_airport_city,
-        "dep_airport_tz": dep_airport_tz,
-        "arr_airport_name": arr_airport_name,
-        "arr_airport_city": arr_airport_city,
-        "arr_airport_tz": arr_airport_tz,
-        # keep legacy fields for compatibility
-        "scheduled_departure": dep_iso,
-        "scheduled_arrival": arr_iso,
+        "dep": {
+            "airport": {
+                "iata": dep_airport,
+                "name": dep_airport_name,
+                "city": dep_airport_city,
+                "tz": dep_airport_tz,
+            },
+            "scheduled": dep_iso,
+        },
+        "arr": {
+            "airport": {
+                "iata": arr_airport,
+                "name": arr_airport_name,
+                "city": arr_airport_city,
+                "tz": arr_airport_tz,
+            },
+            "scheduled": arr_iso,
+        },
         "travellers": _normalize_travellers(travellers),
         "notes": notes,
     }
@@ -232,26 +235,10 @@ async def async_add_manual_flight_record(hass: HomeAssistant, flight: dict[str, 
     """
     airline_code = flight.get("airline_code") or ""
     flight_number = flight.get("flight_number") or ""
-    dep_airport = (
-        _get_nested(flight, "dep", "airport", "iata")
-        or flight.get("dep_airport")
-        or flight.get("dep_airport_iata")
-        or flight.get("dep_iata")
-        or flight.get("origin_iata")
-        or flight.get("orig_iata")
-        or ""
-    )
-    arr_airport = (
-        _get_nested(flight, "arr", "airport", "iata")
-        or flight.get("arr_airport")
-        or flight.get("arr_airport_iata")
-        or flight.get("arr_iata")
-        or flight.get("destination_iata")
-        or flight.get("dest_iata")
-        or ""
-    )
-    dep_sched = (flight.get("dep") or {}).get("scheduled") or flight.get("dep_scheduled") or flight.get("scheduled_departure")
-    arr_sched = (flight.get("arr") or {}).get("scheduled") or flight.get("arr_scheduled") or flight.get("scheduled_arrival")
+    dep_airport = _get_nested(flight, "dep", "airport", "iata") or ""
+    arr_airport = _get_nested(flight, "arr", "airport", "iata") or ""
+    dep_sched = (flight.get("dep") or {}).get("scheduled")
+    arr_sched = (flight.get("arr") or {}).get("scheduled")
 
     if not airline_code or not flight_number or not dep_airport or not arr_airport:
         raise ValueError("airline_code, flight_number, dep_airport, and arr_airport are required")
@@ -305,11 +292,15 @@ async def async_remove_manual_flight(hass: HomeAssistant, flight_key: str) -> bo
     if len(flights) == before:
         return False
     await async_save_manual_flights(hass, flights)
+    await async_clear_status_cache(hass, flight_key)
     return True
 
 
 async def async_clear_manual_flights(hass: HomeAssistant) -> int:
     flights = await async_list_manual_flights(hass)
     n = len(flights)
+    keys = [str(f.get("flight_key")) for f in flights if isinstance(f, dict) and f.get("flight_key")]
     await async_save_manual_flights(hass, [])
+    for key in keys:
+        await async_clear_status_cache(hass, key)
     return n

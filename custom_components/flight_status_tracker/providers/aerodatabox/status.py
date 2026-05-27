@@ -202,53 +202,29 @@ class AeroDataBoxStatusProvider:
         if not date_local:
             return None
 
-        dep_filter = str((flight.get("dep_airport") or ((flight.get("dep") or {}).get("airport") or {}).get("iata") or "")).strip().upper() or None
-        arr_filter = str((flight.get("arr_airport") or ((flight.get("arr") or {}).get("airport") or {}).get("iata") or "")).strip().upper() or None
+        dep_filter = str((((flight.get("dep") or {}).get("airport") or {}).get("iata") or "")).strip().upper() or None
+        arr_filter = str((((flight.get("arr") or {}).get("airport") or {}).get("iata") or "")).strip().upper() or None
 
         base_url, headers = self._base_url_and_headers()
         if not any(headers.values()):
             return FlightStatus(provider="aerodatabox", state="unknown", details={"provider": "aerodatabox", "error": "auth_error"})
 
         url = f"{base_url}/flights/Number/{self._search_param(airline, number)}/{date_local}"
-        # For flight-number lookups, use departure-local date role. "Both" can
-        # miss matches for overnight flights where arrival is on the next day.
+        # For flight-number lookups, use departure-local date role.
         params = {"withLocation": "true", "withAircraftImage": "true", "dateLocalRole": "Departure"}
         session = async_get_clientsession(self.hass)
-
-        payload: Any = None
-        retry_after: str | None = None
-        status_code: int | None = None
-        last_err: str | None = None
-        for attempt in range(_MAX_RATE_LIMIT_RETRIES + 1):
-            try:
-                async with session.get(url, headers=headers, params=params, timeout=25) as resp:
-                    if resp.status == 204:
-                        return None
-                    payload = await resp.json(content_type=None)
-                    retry_after = resp.headers.get("Retry-After")
-                    status_code = resp.status
-            except aiohttp.ClientError:
-                return FlightStatus(provider="aerodatabox", state="unknown", details={"provider": "aerodatabox", "error": "network"})
-            except TimeoutError:
-                return FlightStatus(provider="aerodatabox", state="unknown", details={"provider": "aerodatabox", "error": "timeout"})
-
-            if status_code != 429 or attempt >= _MAX_RATE_LIMIT_RETRIES:
-                break
-            wait_s = self._retry_wait_seconds(retry_after, attempt)
-            last_err = "rate_limited"
-            _LOGGER.warning(
-                "AeroDataBox 429 for %s%s on %s, retrying in %.2fs (attempt %s/%s)",
-                airline,
-                number,
-                date_local,
-                wait_s,
-                attempt + 1,
-                _MAX_RATE_LIMIT_RETRIES,
-            )
-            await asyncio.sleep(wait_s)
+        payload, status_code, retry_after, req_err = await self._request_json(
+            session=session,
+            url=url,
+            headers=headers,
+            params=params,
+            log_key=f"{airline}{number} on {date_local}",
+        )
+        if req_err:
+            return FlightStatus(provider="aerodatabox", state="unknown", details={"provider": "aerodatabox", "error": req_err})
 
         if status_code is None:
-            return FlightStatus(provider="aerodatabox", state="unknown", details={"provider": "aerodatabox", "error": last_err or "provider_error"})
+            return FlightStatus(provider="aerodatabox", state="unknown", details={"provider": "aerodatabox", "error": "provider_error"})
 
         if status_code >= 400:
             err = "provider_error"
@@ -261,16 +237,38 @@ class AeroDataBoxStatusProvider:
                 details["retry_after"] = int(retry_after)
             return FlightStatus(provider="aerodatabox", state="unknown", details=details)
 
-        if not isinstance(payload, list) or not payload:
-            return None
-
+        payload_items = [x for x in payload if isinstance(x, dict)] if isinstance(payload, list) else []
         req_dep_utc = self._requested_dep_utc(flight)
-        best = self._pick_best(
-            [x for x in payload if isinstance(x, dict)],
-            dep_filter,
-            arr_filter,
-            req_dep_utc,
-        )
+        best = self._pick_best(payload_items, dep_filter, arr_filter, req_dep_utc) if payload_items else None
+
+        # Fallback: airport-window lookup for the day to recover cases where number/day lookup misses.
+        if not best and dep_filter:
+            airport_url = f"{base_url}/flights/airports/iata/{dep_filter}/{date_local}/{date_local}"
+            airport_payload, airport_status, _, airport_err = await self._request_json(
+                session=session,
+                url=airport_url,
+                headers=headers,
+                params={"withLocation": "true", "withAircraftImage": "true"},
+                log_key=f"airport {dep_filter} on {date_local}",
+            )
+            if airport_err:
+                _LOGGER.debug("AeroDataBox airport fallback error: %s", airport_err)
+            elif airport_status and airport_status < 400 and isinstance(airport_payload, list):
+                flight_num_norm = self._search_param(airline, number)
+                matches: list[dict[str, Any]] = []
+                for item in airport_payload:
+                    if not isinstance(item, dict):
+                        continue
+                    num = str(item.get("number") or "").replace(" ", "").upper()
+                    if num != flight_num_norm:
+                        continue
+                    arr_iata_item = ((((item.get("arrival") or {}).get("airport") or {}).get("iata") or "")).strip().upper()
+                    if arr_filter and arr_iata_item and arr_iata_item != arr_filter:
+                        continue
+                    matches.append(item)
+                if matches:
+                    best = self._pick_best(matches, dep_filter, arr_filter, req_dep_utc)
+
         if not best:
             return None
 
@@ -356,3 +354,41 @@ class AeroDataBoxStatusProvider:
                 pass
         # 1.5s, 3.0s with 0-0.4s jitter.
         return (1.5 * (2**attempt)) + random.uniform(0.0, 0.4)
+
+    async def _request_json(
+        self,
+        *,
+        session: aiohttp.ClientSession,
+        url: str,
+        headers: dict[str, str],
+        params: dict[str, str],
+        log_key: str,
+    ) -> tuple[Any, int | None, str | None, str | None]:
+        payload: Any = None
+        retry_after: str | None = None
+        status_code: int | None = None
+        for attempt in range(_MAX_RATE_LIMIT_RETRIES + 1):
+            try:
+                async with session.get(url, headers=headers, params=params, timeout=25) as resp:
+                    if resp.status == 204:
+                        return None, 204, None, None
+                    payload = await resp.json(content_type=None)
+                    retry_after = resp.headers.get("Retry-After")
+                    status_code = resp.status
+            except aiohttp.ClientError:
+                return None, None, None, "network"
+            except TimeoutError:
+                return None, None, None, "timeout"
+
+            if status_code != 429 or attempt >= _MAX_RATE_LIMIT_RETRIES:
+                break
+            wait_s = self._retry_wait_seconds(retry_after, attempt)
+            _LOGGER.warning(
+                "AeroDataBox 429 for %s, retrying in %.2fs (attempt %s/%s)",
+                log_key,
+                wait_s,
+                attempt + 1,
+                _MAX_RATE_LIMIT_RETRIES,
+            )
+            await asyncio.sleep(wait_s)
+        return payload, status_code, retry_after, None

@@ -6,7 +6,7 @@ Output: canonical Flight v3 dict (minimal schedule) OR error.
 This module is designed so we can swap providers later.
 Provider selection behavior:
 1) Use only the explicitly selected schedule provider
-2) Legacy "auto" values are coerced to default provider for compatibility
+2) Provider selection is explicit (single-provider mode)
 
 If none configured -> error no_provider
 """
@@ -308,9 +308,11 @@ async def lookup_schedule(
                     {
                         "airline_code": airline_code,
                         "flight_number": flight_number,
-                        "scheduled_departure": f"{date_str}T00:00:00+00:00",
-                        "dep_airport": dep_airport,
-                        "arr_airport": arr_airport,
+                        "dep": {
+                            "scheduled": f"{date_str}T00:00:00+00:00",
+                            "airport": {"iata": dep_airport},
+                        },
+                        "arr": {"airport": {"iata": arr_airport}},
                     }
                 )
                 details = st.details if st else None

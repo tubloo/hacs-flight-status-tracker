@@ -55,7 +55,7 @@ async def _notify(hass: HomeAssistant, title: str, message: str) -> None:
 
 SERVICE_SCHEMA_PREVIEW = vol.Schema(
     {
-        vol.Optional("query"): cv.string,            # legacy: "AI 157"
+        vol.Optional("query"): cv.string,            # e.g. "AI 157"
         vol.Optional("airline"): cv.string,          # IATA like "AI"
         vol.Optional("flight_number"): cv.string,    # "157"
         vol.Optional("date"): cv.string,             # "YYYY-MM-DD"

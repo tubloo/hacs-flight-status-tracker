@@ -100,16 +100,59 @@ def _normalize_status_state(provider_state: str | None, provider: str | None) ->
         return "Scheduled"
     if s in ("active", "enroute", "en route", "en-route", "in air", "in-air", "airborne", "departed", "cruising"):
         return "En Route"
+    if s in ("approaching",):
+        return "En Route"
     if s in ("landed", "arrived", "arrival", "arrived_gate"):
         return "Arrived"
     if s in ("cancelled", "canceled"):
         return "Cancelled"
     if s in ("diverted",):
         return "Diverted"
-    if s in ("unknown", "n/a", "na"):
+    if s in ("unknown", "n/a", "na", "canceleduncertain", "cancelleduncertain", "canceled_uncertain", "cancelled_uncertain"):
         return "Unknown"
 
     return "Unknown"
+
+
+def _parse_iso_dt(val: Any) -> datetime | None:
+    if not isinstance(val, str) or not val:
+        return None
+    try:
+        return datetime.fromisoformat(val.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def _normalize_time_aware_status(
+    provider_state: str | None,
+    provider: str | None,
+    flight: dict[str, Any],
+    status: dict[str, Any],
+) -> str:
+    base = _normalize_status_state(provider_state, provider) or "Unknown"
+    s = str(provider_state or "").strip().lower()
+    if s not in ("expected", "delayed"):
+        return base
+
+    dep = flight.get("dep") or {}
+    dep_sched = (
+        status.get("dep_scheduled")
+        or status.get("dep_estimated")
+        or dep.get("scheduled")
+        or dep.get("estimated")
+    )
+    dep_actual = status.get("dep_actual") or dep.get("actual")
+    dep_actual_dt = _parse_iso_dt(dep_actual)
+    if dep_actual_dt is not None:
+        return "En Route"
+
+    dep_sched_dt = _parse_iso_dt(dep_sched)
+    if dep_sched_dt is None:
+        return "Scheduled"
+
+    now = dt_util.utcnow()
+    dep_sched_utc = dt_util.as_utc(dep_sched_dt) if dep_sched_dt.tzinfo else dt_util.as_utc(dt_util.as_local(dep_sched_dt))
+    return "En Route" if now >= dep_sched_utc else "Scheduled"
 
 
 def apply_status(flight: dict[str, Any], status: dict[str, Any] | None) -> dict[str, Any]:
@@ -124,18 +167,6 @@ def apply_status(flight: dict[str, Any], status: dict[str, Any] | None) -> dict[
     # Avoid duplicate fields
     status.pop("state", None)
     flight.pop("status_provider_state", None)
-
-    prev_state = flight.get("status_state") or "Unknown"
-    normalized_state = _normalize_status_state(provider_state, provider) or "Unknown"
-    # If provider yields unknown (or no state) but we already have a meaningful state,
-    # keep the existing state to avoid flipping to Unknown on transient errors.
-    if normalized_state == "Unknown" and prev_state != "Unknown":
-        if not provider_state or str(provider_state).strip().lower() in ("unknown", "n/a", "na"):
-            flight["status_state"] = prev_state
-        else:
-            flight["status_state"] = normalized_state
-    else:
-        flight["status_state"] = normalized_state
 
     dep = flight.setdefault("dep", {})
     arr = flight.setdefault("arr", {})
@@ -203,6 +234,18 @@ def apply_status(flight: dict[str, Any], status: dict[str, Any] | None) -> dict[
 
     if status.get("position"):
         flight["position"] = status.get("position")
+
+    prev_state = flight.get("status_state") or "Unknown"
+    normalized_state = _normalize_time_aware_status(provider_state, provider, flight, status)
+    # If provider yields unknown (or no state) but we already have a meaningful state,
+    # keep the existing state to avoid flipping to Unknown on transient errors.
+    if normalized_state == "Unknown" and prev_state != "Unknown":
+        if not provider_state or str(provider_state).strip().lower() in ("unknown", "n/a", "na"):
+            flight["status_state"] = prev_state
+        else:
+            flight["status_state"] = normalized_state
+    else:
+        flight["status_state"] = normalized_state
 
     # Diverted destination (only when status is Diverted and provider arrival differs)
     try:

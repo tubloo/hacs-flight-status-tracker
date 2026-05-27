@@ -1,9 +1,5 @@
 """Manual itinerary provider -> canonical schema dicts.
 
-Reads from manual_store but supports BOTH:
-- legacy stored fields: scheduled_departure / scheduled_arrival (top-level)
-- canonical stored fields: dep.scheduled / arr.scheduled
-
 Also ensures airline_logo_url is populated when airline_code is present:
 - If airline_logo_url missing, derive from a provider-neutral URL pattern:
   https://pics.avs.io/64/64/{IATA}.png
@@ -73,8 +69,8 @@ class ManualItineraryProvider:
         out: list[dict[str, Any]] = []
 
         for raw in flights:
-            dep_sched_val = _get_nested(raw, "dep", "scheduled") or raw.get("scheduled_departure")
-            arr_sched_val = _get_nested(raw, "arr", "scheduled") or raw.get("scheduled_arrival")
+            dep_sched_val = _get_nested(raw, "dep", "scheduled")
+            arr_sched_val = _get_nested(raw, "arr", "scheduled")
 
             dep_sched_dt = _parse_dt(dep_sched_val)
             arr_sched_dt = _parse_dt(arr_sched_val)
@@ -90,20 +86,20 @@ class ManualItineraryProvider:
             if dep_sched_utc < start_utc or dep_sched_utc > end_utc:
                 continue
 
-            dep_iata = _get_nested(raw, "dep", "airport", "iata") or raw.get("dep_airport")
-            arr_iata = _get_nested(raw, "arr", "airport", "iata") or raw.get("arr_airport")
+            dep_iata = _get_nested(raw, "dep", "airport", "iata")
+            arr_iata = _get_nested(raw, "arr", "airport", "iata")
 
-            dep_air_tz = _get_nested(raw, "dep", "airport", "tz") or raw.get("dep_airport_tz")
-            arr_air_tz = _get_nested(raw, "arr", "airport", "tz") or raw.get("arr_airport_tz")
+            dep_air_tz = _get_nested(raw, "dep", "airport", "tz")
+            arr_air_tz = _get_nested(raw, "arr", "airport", "tz")
 
-            dep_air_tz_short = _get_nested(raw, "dep", "airport", "tz_short") or raw.get("dep_tz_short")
-            arr_air_tz_short = _get_nested(raw, "arr", "airport", "tz_short") or raw.get("arr_tz_short")
+            dep_air_tz_short = _get_nested(raw, "dep", "airport", "tz_short")
+            arr_air_tz_short = _get_nested(raw, "arr", "airport", "tz_short")
 
-            dep_air_name = _get_nested(raw, "dep", "airport", "name") or raw.get("dep_airport_name")
-            arr_air_name = _get_nested(raw, "arr", "airport", "name") or raw.get("arr_airport_name")
+            dep_air_name = _get_nested(raw, "dep", "airport", "name")
+            arr_air_name = _get_nested(raw, "arr", "airport", "name")
 
-            dep_air_city = _get_nested(raw, "dep", "airport", "city") or raw.get("dep_airport_city")
-            arr_air_city = _get_nested(raw, "arr", "airport", "city") or raw.get("arr_airport_city")
+            dep_air_city = _get_nested(raw, "dep", "airport", "city")
+            arr_air_city = _get_nested(raw, "arr", "airport", "city")
 
             dep_terminal = _get_nested(raw, "dep", "terminal") or raw.get("terminal_dep")
             dep_gate = _get_nested(raw, "dep", "gate") or raw.get("gate_dep")
@@ -133,9 +129,6 @@ class ManualItineraryProvider:
                     "status_state": raw.get("status_state") or (status or {}).get("state") or "Unknown",
                     "notes": raw.get("notes"),
                     "status": status,
-                    # expose stored schedule fields so backfill logic doesn't overwrite them
-                    "scheduled_departure": dep_sched_iso,
-                    "scheduled_arrival": _as_utc_iso(arr_sched_dt),
                     "dep": {
                         "airport": {
                             "iata": dep_iata,
