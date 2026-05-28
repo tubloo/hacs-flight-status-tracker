@@ -113,6 +113,11 @@ Recommended dashboard package:
   - `custom:flight-status-tracker-add-card`
   - `custom:flight-status-tracker-remove-card`
   - `custom:flight-status-tracker-diagnostics-card`
+- Flight List card options:
+  - `show_background_image` (default `true`)
+  - `max_flights` (optional; min `1` if set, empty = all)
+  - `sort_by` (`departure` default, or `arrival`)
+- Flight tile `Updated` value is based on the last successful status retrieval from the provider.
 
 Example Lovelace cards are provided under `docs/lovelace/`:
 - `docs/lovelace/flight_list.yaml`
