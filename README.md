@@ -145,6 +145,7 @@ If a card is not listed in HACS, add its GitHub repo under **HACS > Frontend > C
   
 ## Upgrade Notes
 
+- `v2.1.7`: Reduced Lovelace card flicker by gating `upcoming_flights` and per-flight sensor state writes/events on meaningful payload changes, preventing no-op rebuilds from forcing rerenders.
 - `v2.1.6`: Refresh scheduler guard added so far-before-departure polling cannot skip over the prepare-to-travel boundary. Prevents long far intervals from missing pre-departure refresh windows.
 - `v2.1.5`: Confirm-add now persists rich preview status/timing fields and seeds status refresh cache so newly added flights render with latest known status immediately. AeroDataBox estimated-time mapping now prefers `predictedTime` over `revisedTime` when available.
 - `v2.1.3`: Refresh reliability and startup behavior updates. Persisted per-flight refresh state in storage, removed deferred full startup refresh, hydrated last saved status on startup without immediate provider polling, and synchronized manual flight delete/clear with refresh-state eviction.

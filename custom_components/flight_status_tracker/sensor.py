@@ -8,6 +8,7 @@ import asyncio
 from datetime import timedelta
 import hashlib
 import inspect
+import json
 import logging
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
@@ -48,6 +49,15 @@ def _parse_dt(val: Any):
     if not isinstance(val, str):
         return None
     return dt_util.parse_datetime(val)
+
+
+def _stable_signature(value: Any) -> str:
+    """Build a stable hash for change detection across rebuilds."""
+    try:
+        raw = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True, default=str)
+    except Exception:
+        raw = repr(value)
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()
 
 
 def _format_hm_local(ts: Any, tzname: str | None) -> tuple[Any | None, str | None]:
@@ -476,6 +486,7 @@ class FlightDashboardFlightSensor(SensorEntity):
         self._attr_unique_id = f"{DOMAIN}_flight_{entry.entry_id}_{slug}"
         self._attr_suggested_object_id = f"{DOMAIN}_flight_{slug}"
         self._flight: dict[str, Any] | None = None
+        self._flight_signature: str | None = None
         self._attr_available = False
 
     @property
@@ -544,9 +555,13 @@ class FlightDashboardFlightSensor(SensorEntity):
 
     @callback
     def async_set_flight(self, flight: dict[str, Any] | None, *, write_state: bool = True) -> None:
-        self._flight = flight if isinstance(flight, dict) else None
+        new_flight = flight if isinstance(flight, dict) else None
+        new_sig = _stable_signature(new_flight) if new_flight is not None else None
+        changed = (new_sig != self._flight_signature) or ((new_flight is not None) != self._attr_available)
+        self._flight = new_flight
+        self._flight_signature = new_sig
         self._attr_available = self._flight is not None
-        if write_state:
+        if write_state and changed:
             self.async_write_ha_state()
 
 
@@ -574,6 +589,7 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
         self._rebuild_pending = False
         self._pending_reason: str | None = None
         self._manual_deferred_unsub: Callable[[], None] | None = None
+        self._last_render_signature: str | None = None
 
     async def async_added_to_hass(self) -> None:
         # Rebuild whenever manual flights are updated
@@ -1080,13 +1096,16 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
 
             flight["ui"] = _build_ui_block(flight, now, options)
 
+        render_signature = _stable_signature(flights)
+        render_changed = render_signature != self._last_render_signature
         self._flights = flights
         self.hass.data.setdefault(DOMAIN, {})[DATA_UPCOMING_FLIGHTS] = list(flights)
         self.hass.data.setdefault(DOMAIN, {})[_FLIGHT_ENTITY_STATE_KEY] = self._flight_entities
         self._sync_flight_entities(flights)
-        self.async_write_ha_state()
-        # Notify selects/binary sensors even if state didn't change
-        self.hass.bus.async_fire(EVENT_UPDATED)
+        if render_changed:
+            self._last_render_signature = render_signature
+            self.async_write_ha_state()
+            self.hass.bus.async_fire(EVENT_UPDATED)
 
         if not next_refresh:
             # Safety net: if any non-terminal flights remain but per-flight
