@@ -60,6 +60,33 @@ def _stable_signature(value: Any) -> str:
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()
 
 
+_VOLATILE_FLIGHT_KEYS = {
+    "status_updated_at",
+}
+
+_VOLATILE_UI_KEYS = {
+    "updated_ago_min",
+    "updated_abs",
+    "position_age_min",
+}
+
+
+def _signature_payload_flight(flight: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Drop volatile fields so no-op polls do not trigger rerenders."""
+    if not isinstance(flight, dict):
+        return None
+    out = dict(flight)
+    for key in _VOLATILE_FLIGHT_KEYS:
+        out.pop(key, None)
+    ui = out.get("ui")
+    if isinstance(ui, dict):
+        ui_out = dict(ui)
+        for key in _VOLATILE_UI_KEYS:
+            ui_out.pop(key, None)
+        out["ui"] = ui_out
+    return out
+
+
 def _format_hm_local(ts: Any, tzname: str | None) -> tuple[Any | None, str | None]:
     if not isinstance(ts, str):
         return None, None
@@ -556,7 +583,7 @@ class FlightDashboardFlightSensor(SensorEntity):
     @callback
     def async_set_flight(self, flight: dict[str, Any] | None, *, write_state: bool = True) -> None:
         new_flight = flight if isinstance(flight, dict) else None
-        new_sig = _stable_signature(new_flight) if new_flight is not None else None
+        new_sig = _stable_signature(_signature_payload_flight(new_flight)) if new_flight is not None else None
         changed = (new_sig != self._flight_signature) or ((new_flight is not None) != self._attr_available)
         self._flight = new_flight
         self._flight_signature = new_sig
@@ -1096,7 +1123,9 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
 
             flight["ui"] = _build_ui_block(flight, now, options)
 
-        render_signature = _stable_signature(flights)
+        render_signature = _stable_signature(
+            [_signature_payload_flight(f) if isinstance(f, dict) else f for f in flights]
+        )
         render_changed = render_signature != self._last_render_signature
         self._flights = flights
         self.hass.data.setdefault(DOMAIN, {})[DATA_UPCOMING_FLIGHTS] = list(flights)
