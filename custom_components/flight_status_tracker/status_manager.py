@@ -370,7 +370,13 @@ def compute_next_refresh_seconds(
     if dep and now < dep:
         delta = dep - now
         if delta > timedelta(hours=far_thr_hours):
-            return max(ttl_seconds, cfg["far_int_seconds"])
+            # Guard rail: never let a far-future interval skip past the
+            # prepare-to-travel boundary (dep - far threshold).
+            boundary = dep - timedelta(hours=far_thr_hours)
+            to_boundary_seconds = int((boundary - now).total_seconds())
+            if to_boundary_seconds > 0:
+                return max(60, min(cfg["far_int_seconds"], to_boundary_seconds))
+            return max(60, cfg["prepare_to_travel_int_seconds"])
         return max(ttl_seconds, cfg["prepare_to_travel_int_seconds"])
 
     # Fallback: periodic but not frequent
