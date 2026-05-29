@@ -20,7 +20,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, SIGNAL_MANUAL_FLIGHTS_UPDATED
 from .status_resolver import _normalize_status_state
-from .status_manager import async_clear_status_cache
+from .status_manager import async_clear_status_cache, async_seed_status_cache
 
 _STORE_KEY = f"{DOMAIN}.manual_flights"
 _STORE_VERSION = 1
@@ -248,7 +248,7 @@ async def async_add_manual_flight_record(hass: HomeAssistant, flight: dict[str, 
     dep_air = (flight.get("dep") or {}).get("airport") or {}
     arr_air = (flight.get("arr") or {}).get("airport") or {}
 
-    return await async_add_manual_flight(
+    flight_key = await async_add_manual_flight(
         hass,
         airline_code=airline_code,
         flight_number=flight_number,
@@ -269,6 +269,48 @@ async def async_add_manual_flight_record(hass: HomeAssistant, flight: dict[str, 
         arr_airport_city=arr_air.get("city"),
         arr_airport_tz=arr_air.get("tz"),
     )
+
+    # Persist rich preview/status fields so the just-added flight renders with
+    # latest known details without waiting for the next provider refresh cycle.
+    flights = await async_list_manual_flights(hass)
+    for idx, rec in enumerate(flights):
+        if rec.get("flight_key") != flight_key:
+            continue
+        enriched = dict(rec)
+        for key in (
+            "status_state",
+            "status",
+            "status_updated_at",
+            "delay_status",
+            "delay_status_key",
+            "delay_minutes",
+            "duration_minutes",
+            "duration_scheduled_minutes",
+            "duration_estimated_minutes",
+            "duration_actual_minutes",
+            "aircraft_image_url",
+            "aircraft_type",
+        ):
+            if key in flight:
+                enriched[key] = flight.get(key)
+        if isinstance(flight.get("dep"), dict):
+            enriched["dep"] = dict(flight.get("dep") or {})
+        if isinstance(flight.get("arr"), dict):
+            enriched["arr"] = dict(flight.get("arr") or {})
+        flights[idx] = enriched
+        break
+    await async_save_manual_flights(hass, flights)
+
+    status = flight.get("status")
+    if isinstance(status, dict) and status:
+        await async_seed_status_cache(
+            hass,
+            flight_key,
+            status,
+            updated_at=flight.get("status_updated_at"),
+        )
+
+    return flight_key
 
 
 async def async_update_manual_flight(

@@ -61,6 +61,30 @@ async def async_clear_status_cache(hass: HomeAssistant, flight_key: str | None =
         _LOGGER.warning("Failed to clear persisted status refresh state", exc_info=True)
 
 
+async def async_seed_status_cache(
+    hass: HomeAssistant,
+    flight_key: str,
+    status: dict[str, Any],
+    *,
+    updated_at: str | None = None,
+    next_check_at: datetime | None = None,
+) -> None:
+    """Seed one persisted cache entry using fresh preview status."""
+    if not flight_key or not isinstance(status, dict) or not status:
+        return
+    try:
+        cache = await _load_status_cache(hass)
+        now = dt_util.utcnow()
+        cache[flight_key] = {
+            "status": status,
+            "updated_at": updated_at or now.isoformat(),
+            "next_check": (next_check_at or (now + timedelta(minutes=5))).isoformat(),
+        }
+        await _save_status_cache(hass, cache)
+    except Exception:
+        _LOGGER.warning("Failed to seed persisted status refresh state", exc_info=True)
+
+
 def _parse_dt(val: Any) -> datetime | None:
     if not val:
         return None

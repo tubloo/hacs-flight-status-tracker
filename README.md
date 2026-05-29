@@ -145,6 +145,7 @@ If a card is not listed in HACS, add its GitHub repo under **HACS > Frontend > C
   
 ## Upgrade Notes
 
+- `v2.1.5`: Confirm-add now persists rich preview status/timing fields and seeds status refresh cache so newly added flights render with latest known status immediately. AeroDataBox estimated-time mapping now prefers `predictedTime` over `revisedTime` when available.
 - `v2.1.3`: Refresh reliability and startup behavior updates. Persisted per-flight refresh state in storage, removed deferred full startup refresh, hydrated last saved status on startup without immediate provider polling, and synchronized manual flight delete/clear with refresh-state eviction.
 - `v2.1.2`: Added canonical pre-departure status mapping so AeroDataBox states `CheckIn`, `Boarding`, and `GateClosed` are normalized to `Scheduled` instead of `Unknown`.
 - `v2.1.1`: Reliability hardening for continuous operation. Added rate-limit retry handling (`429` with `Retry-After` + jitter) for AeroDataBox/FlightAPI, improved scheduler/watchdog rebuild safety under burst triggers, fixed schedule lookup rate-limit error surfacing, and improved direct add-flight failure notifications.

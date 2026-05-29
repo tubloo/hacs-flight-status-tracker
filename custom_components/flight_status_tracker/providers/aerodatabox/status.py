@@ -308,11 +308,13 @@ class AeroDataBoxStatusProvider:
             "arr_tz": arr_air.get("timeZone"),
             "dep_scheduled": self._get_utc(dep.get("scheduledTime")),
             "dep_scheduled_local": self._get_local(dep.get("scheduledTime")),
-            "dep_estimated": self._get_utc(dep.get("revisedTime")) or self._get_utc(dep.get("predictedTime")),
+            # AeroDataBox-only preference: predicted time is the best live estimate;
+            # fall back to revised time if predicted is unavailable.
+            "dep_estimated": self._get_utc(dep.get("predictedTime")) or self._get_utc(dep.get("revisedTime")),
             "dep_actual": self._get_utc(dep.get("runwayTime")),
             "arr_scheduled": self._get_utc(arr.get("scheduledTime")),
             "arr_scheduled_local": self._get_local(arr.get("scheduledTime")),
-            "arr_estimated": self._get_utc(arr.get("revisedTime")) or self._get_utc(arr.get("predictedTime")),
+            "arr_estimated": self._get_utc(arr.get("predictedTime")) or self._get_utc(arr.get("revisedTime")),
             "arr_actual": self._get_utc(arr.get("runwayTime")),
             "terminal_dep": dep.get("terminal"),
             "gate_dep": dep.get("gate"),

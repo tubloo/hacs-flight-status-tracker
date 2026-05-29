@@ -128,6 +128,7 @@ class ManualItineraryProvider:
                     "aircraft_type": raw.get("aircraft_type"),
                     "travellers": raw.get("travellers") or [],
                     "status_state": raw.get("status_state") or (status or {}).get("state") or "Unknown",
+                    "status_updated_at": raw.get("status_updated_at"),
                     "notes": raw.get("notes"),
                     "status": status,
                     "dep": {
