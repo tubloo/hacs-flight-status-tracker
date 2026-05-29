@@ -68,6 +68,9 @@ _VOLATILE_UI_KEYS = {
     "updated_ago_min",
     "updated_abs",
     "position_age_min",
+    "position_line",
+    "route_progress_at_poll_pct",
+    "plane_x_at_poll_pct",
 }
 
 
@@ -78,6 +81,9 @@ def _signature_payload_flight(flight: dict[str, Any] | None) -> dict[str, Any] |
     out = dict(flight)
     for key in _VOLATILE_FLIGHT_KEYS:
         out.pop(key, None)
+    # Raw provider payload may include timestamps/noise that change without
+    # altering card-visible status/timing fields.
+    out.pop("status", None)
     ui = out.get("ui")
     if isinstance(ui, dict):
         ui_out = dict(ui)
@@ -1186,6 +1192,7 @@ class FlightDashboardSelectedFlightSensor(SensorEntity):
         self._unsub_state = None
         self._unsub_bus = None
         self._flight: dict[str, Any] | None = None
+        self._flight_signature: str | None = None
 
     async def async_added_to_hass(self) -> None:
         @callback
@@ -1230,7 +1237,12 @@ class FlightDashboardSelectedFlightSensor(SensorEntity):
         }
 
     async def _refresh(self) -> None:
-        self._flight = get_selected_flight(self.hass)
+        flight = get_selected_flight(self.hass)
+        new_sig = _stable_signature(_signature_payload_flight(flight))
+        if new_sig == self._flight_signature:
+            return
+        self._flight_signature = new_sig
+        self._flight = flight
         self.async_write_ha_state()
 
 
@@ -1343,6 +1355,7 @@ class FlightDashboardProviderBlockSensor(SensorEntity):
         self._attr_unique_id = f"{DOMAIN}_provider_blocks"
         self._unsub: Callable[[], None] | None = None
         self._blocks: dict[str, Any] = {}
+        self._last_signature: str | None = None
 
     async def async_added_to_hass(self) -> None:
         await self._update()
@@ -1379,7 +1392,12 @@ class FlightDashboardProviderBlockSensor(SensorEntity):
                 "reason": info.get("reason"),
             }
 
-        self._blocks = {"blocked_count": len(active), "providers": active}
+        new_blocks = {"blocked_count": len(active), "providers": active}
+        new_sig = _stable_signature(new_blocks)
+        if new_sig == self._last_signature:
+            return
+        self._last_signature = new_sig
+        self._blocks = new_blocks
         self._attr_available = True
         self._attr_native_value = "blocked" if active else "ok"
         self.async_write_ha_state()

@@ -24,6 +24,7 @@ class FlightDashboardSelectedHasPositionBinarySensor(BinarySensorEntity):
         self._unsub_bus = None
         self._is_on = False
         self._flight: dict[str, Any] | None = None
+        self._last_signature: tuple[bool, str | None, Any, Any] | None = None
 
     async def async_added_to_hass(self) -> None:
         @callback
@@ -61,9 +62,20 @@ class FlightDashboardSelectedHasPositionBinarySensor(BinarySensorEntity):
         }
 
     async def _refresh(self) -> None:
-        self._flight = get_selected_flight(self.hass)
-        pos = get_flight_position(self._flight)
-        self._is_on = bool(pos and pos.get("lat") is not None and pos.get("lon") is not None)
+        flight = get_selected_flight(self.hass)
+        pos = get_flight_position(flight)
+        is_on = bool(pos and pos.get("lat") is not None and pos.get("lon") is not None)
+        signature = (
+            is_on,
+            (flight or {}).get("flight_key"),
+            (pos or {}).get("lat"),
+            (pos or {}).get("lon"),
+        )
+        if signature == self._last_signature:
+            return
+        self._last_signature = signature
+        self._flight = flight
+        self._is_on = is_on
         self.async_write_ha_state()
 
 

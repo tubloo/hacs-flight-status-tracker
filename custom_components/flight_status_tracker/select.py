@@ -42,6 +42,7 @@ class FlightDashboardRemoveFlightSelect(SelectEntity):
         self._unsub_state = None
         self._unsub_bus = None
         self._unsub_dispatcher = None
+        self._last_signature: tuple[tuple[str, ...], str] | None = None
 
     async def async_added_to_hass(self) -> None:
         @callback
@@ -72,10 +73,13 @@ class FlightDashboardRemoveFlightSelect(SelectEntity):
         if not opts:
             opts = ["No flights"]
 
+        new_current = self._attr_current_option if self._attr_current_option in opts else opts[0]
+        signature = (tuple(opts), new_current)
+        if signature == self._last_signature:
+            return
+        self._last_signature = signature
         self._attr_options = opts
-        if self._attr_current_option not in self._attr_options:
-            self._attr_current_option = self._attr_options[0]
-
+        self._attr_current_option = new_current
         self.async_write_ha_state()
 
     async def async_select_option(self, option: str) -> None:
@@ -98,6 +102,7 @@ class FlightDashboardSelectedFlightSelect(SelectEntity):
         self._unsub_state = None
         self._unsub_bus = None
         self._unsub_dispatcher = None
+        self._last_signature: tuple[tuple[str, ...], str] | None = None
 
     async def async_added_to_hass(self) -> None:
         @callback
@@ -128,10 +133,13 @@ class FlightDashboardSelectedFlightSelect(SelectEntity):
         if not opts:
             opts = ["No flights"]
 
+        new_current = self._attr_current_option if self._attr_current_option in opts else opts[0]
+        signature = (tuple(opts), new_current)
+        if signature == self._last_signature:
+            return
+        self._last_signature = signature
         self._attr_options = opts
-        if self._attr_current_option not in self._attr_options:
-            self._attr_current_option = self._attr_options[0]
-
+        self._attr_current_option = new_current
         self.async_write_ha_state()
 
     async def async_select_option(self, option: str) -> None:

@@ -145,6 +145,7 @@ If a card is not listed in HACS, add its GitHub repo under **HACS > Frontend > C
   
 ## Upgrade Notes
 
+- `v2.1.9`: Stability pass for flicker: tightened meaningful-change gating to ignore volatile timestamp/progress fields and added write-gating for selected/binary/select/helper sensors so no-op refresh cycles stop publishing redundant state updates.
 - `v2.1.8`: Further reduced Lovelace flicker by excluding volatile timestamp/age fields (`status_updated_at`, `ui.updated_*`, `ui.position_age_min`) from flight/list change signatures so timestamp-only churn no longer forces card rerenders.
 - `v2.1.7`: Reduced Lovelace card flicker by gating `upcoming_flights` and per-flight sensor state writes/events on meaningful payload changes, preventing no-op rebuilds from forcing rerenders.
 - `v2.1.6`: Refresh scheduler guard added so far-before-departure polling cannot skip over the prepare-to-travel boundary. Prevents long far intervals from missing pre-departure refresh windows.
