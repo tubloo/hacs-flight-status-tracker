@@ -21,6 +21,7 @@ from homeassistant.util import dt as dt_util
 from .const import DOMAIN, SIGNAL_MANUAL_FLIGHTS_UPDATED
 from .status_resolver import _normalize_status_state
 from .status_manager import async_clear_status_cache, async_seed_status_cache
+from .travel_metrics import async_record_saved_flight
 
 _STORE_KEY = f"{DOMAIN}.manual_flights"
 _STORE_VERSION = 1
@@ -161,9 +162,13 @@ async def async_add_manual_flight(
     dep_airport_name: str | None = None,
     dep_airport_city: str | None = None,
     dep_airport_tz: str | None = None,
+    dep_airport_lat: Any = None,
+    dep_airport_lon: Any = None,
     arr_airport_name: str | None = None,
     arr_airport_city: str | None = None,
     arr_airport_tz: str | None = None,
+    arr_airport_lat: Any = None,
+    arr_airport_lon: Any = None,
 ) -> str:
     flights = await async_list_manual_flights(hass)
 
@@ -205,6 +210,8 @@ async def async_add_manual_flight(
                 "name": dep_airport_name,
                 "city": dep_airport_city,
                 "tz": dep_airport_tz,
+                "lat": dep_airport_lat,
+                "lon": dep_airport_lon,
             },
             "scheduled": dep_iso,
         },
@@ -214,6 +221,8 @@ async def async_add_manual_flight(
                 "name": arr_airport_name,
                 "city": arr_airport_city,
                 "tz": arr_airport_tz,
+                "lat": arr_airport_lat,
+                "lon": arr_airport_lon,
             },
             "scheduled": arr_iso,
         },
@@ -227,6 +236,8 @@ async def async_add_manual_flight(
         flights[existing_idx] = {**flights[existing_idx], **rec}
 
     await async_save_manual_flights(hass, flights)
+    if existing_idx is None:
+        await async_record_saved_flight(hass, rec)
     return flight_key
 
 
@@ -265,9 +276,13 @@ async def async_add_manual_flight_record(hass: HomeAssistant, flight: dict[str, 
         dep_airport_name=dep_air.get("name"),
         dep_airport_city=dep_air.get("city"),
         dep_airport_tz=dep_air.get("tz"),
+        dep_airport_lat=dep_air.get("lat"),
+        dep_airport_lon=dep_air.get("lon"),
         arr_airport_name=arr_air.get("name"),
         arr_airport_city=arr_air.get("city"),
         arr_airport_tz=arr_air.get("tz"),
+        arr_airport_lat=arr_air.get("lat"),
+        arr_airport_lon=arr_air.get("lon"),
     )
 
     # Persist rich preview/status fields so the just-added flight renders with

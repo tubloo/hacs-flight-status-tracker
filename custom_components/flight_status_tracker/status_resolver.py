@@ -155,6 +155,22 @@ def _normalize_time_aware_status(
     return "En Route" if now >= dep_sched_utc else "Scheduled"
 
 
+def _preserve_stronger_state(prev_state: str, next_state: str) -> str:
+    """Prevent regressions from strong terminal states to weaker states."""
+    prev = str(prev_state or "Unknown").strip() or "Unknown"
+    new = str(next_state or "Unknown").strip() or "Unknown"
+
+    if prev == "Arrived" and new in ("Unknown", "Scheduled", "En Route", "Diverted", "Cancelled"):
+        return prev
+    if prev == "Cancelled" and new in ("Unknown", "Scheduled", "En Route"):
+        return prev
+    if prev == "Diverted" and new in ("Unknown", "Scheduled"):
+        return prev
+    if prev == "En Route" and new == "Scheduled":
+        return prev
+    return new
+
+
 def apply_status(flight: dict[str, Any], status: dict[str, Any] | None) -> dict[str, Any]:
     """Apply normalized status dict onto a canonical flight dict."""
     if not status:
@@ -247,7 +263,7 @@ def apply_status(flight: dict[str, Any], status: dict[str, Any] | None) -> dict[
         else:
             flight["status_state"] = normalized_state
     else:
-        flight["status_state"] = normalized_state
+        flight["status_state"] = _preserve_stronger_state(prev_state, normalized_state)
 
     # Diverted destination (only when status is Diverted and provider arrival differs)
     try:

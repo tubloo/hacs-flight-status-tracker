@@ -58,9 +58,15 @@ def _default_provider_stats() -> dict[str, Any]:
 def _default_metrics() -> dict[str, Any]:
     return {
         "total_calls": 0,
+        "day_key": None,
+        "daily_calls": 0,
+        "daily_by_provider": {},
         "month_key": None,
         "monthly_calls": 0,
         "monthly_by_provider": {},
+        "year_key": None,
+        "yearly_calls": 0,
+        "yearly_by_provider": {},
         "providers": {},
         "updated_at": None,
     }
@@ -76,6 +82,11 @@ def _metrics_data(hass: HomeAssistant) -> dict[str, Any]:
     if not isinstance(metrics, dict):
         metrics = _default_metrics()
         data["api_metrics"] = metrics
+    else:
+        defaults = _default_metrics()
+        for key, value in defaults.items():
+            if key not in metrics:
+                metrics[key] = deepcopy(value)
     return metrics
 
 
@@ -162,11 +173,21 @@ def _record_api_call_on_loop(
     flow_key = _normalize_flow(flow)
     outcome_key = _normalize_outcome(outcome)
     now = dt_util.utcnow()
+    day_key = now.strftime("%Y-%m-%d")
     month_key = now.strftime("%Y-%m")
+    year_key = now.strftime("%Y")
+    if metrics.get("day_key") != day_key:
+        metrics["day_key"] = day_key
+        metrics["daily_calls"] = 0
+        metrics["daily_by_provider"] = {}
     if metrics.get("month_key") != month_key:
         metrics["month_key"] = month_key
         metrics["monthly_calls"] = 0
         metrics["monthly_by_provider"] = {}
+    if metrics.get("year_key") != year_key:
+        metrics["year_key"] = year_key
+        metrics["yearly_calls"] = 0
+        metrics["yearly_by_provider"] = {}
 
     stats = providers.get(provider_key)
     if not isinstance(stats, dict):
@@ -174,12 +195,24 @@ def _record_api_call_on_loop(
         providers[provider_key] = stats
 
     metrics["total_calls"] = int(metrics.get("total_calls") or 0) + 1
+    metrics["daily_calls"] = int(metrics.get("daily_calls") or 0) + 1
     metrics["monthly_calls"] = int(metrics.get("monthly_calls") or 0) + 1
+    metrics["yearly_calls"] = int(metrics.get("yearly_calls") or 0) + 1
+    daily_by_provider = metrics.get("daily_by_provider")
+    if not isinstance(daily_by_provider, dict):
+        daily_by_provider = {}
+        metrics["daily_by_provider"] = daily_by_provider
+    daily_by_provider[provider_key] = int(daily_by_provider.get(provider_key) or 0) + 1
     monthly_by_provider = metrics.get("monthly_by_provider")
     if not isinstance(monthly_by_provider, dict):
         monthly_by_provider = {}
         metrics["monthly_by_provider"] = monthly_by_provider
     monthly_by_provider[provider_key] = int(monthly_by_provider.get(provider_key) or 0) + 1
+    yearly_by_provider = metrics.get("yearly_by_provider")
+    if not isinstance(yearly_by_provider, dict):
+        yearly_by_provider = {}
+        metrics["yearly_by_provider"] = yearly_by_provider
+    yearly_by_provider[provider_key] = int(yearly_by_provider.get(provider_key) or 0) + 1
     stats["total"] = int(stats.get("total") or 0) + 1
 
     if flow_key in ("status", "schedule", "position", "directory", "usage"):

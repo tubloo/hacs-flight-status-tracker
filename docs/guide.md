@@ -154,20 +154,45 @@ Exact refresh intervals depend on your configured polling schedule.
 
 ## API Call Metrics
 
-The integration exposes a diagnostic sensor:
+The integration exposes diagnostic API usage sensors:
 
+- `sensor.flight_status_tracker_api_calls_today`
+- `sensor.flight_status_tracker_api_utility_meter`
+- `sensor.flight_status_tracker_api_calls_this_year`
 - `sensor.flight_status_tracker_api_calls`
 
-Sensor state:
+Sensor states:
 
-- Total provider API calls recorded by the integration (monotonic counter).
+- Daily, monthly, yearly, and lifetime provider API calls recorded by the integration.
 
 Key attributes:
 
-- `by_provider`: compact totals per provider.
-- `providers`: detailed per-provider counters split by flow (`status`, `schedule`, `position`, `usage`) and outcomes (`success`, `rate_limited`, `quota_exceeded`, etc.).
+- `provider`: the active provider used for diagnostics display.
+- `provider_calls` on daily/monthly/yearly sensors: period total for the active provider.
+- `provider_flows` on `sensor.flight_status_tracker_api_calls`: focused lifetime counters split by flow (`status`, `schedule`, `position`, `directory`, `usage`).
+- `providers`: detailed per-provider lifetime counters split by flow and outcomes (`success`, `rate_limited`, `quota_exceeded`, etc.).
 
-This gives a single, consistent attribute model across providers for dashboard cards and helper/template sensors.
+This gives a single-provider-focused diagnostics model for dashboard cards while preserving full lifetime per-provider detail for debugging.
+
+## Travel Activity Metrics
+
+The integration also exposes travel activity sensors:
+
+- `sensor.flight_status_tracker_flights_today`
+- `sensor.flight_status_tracker_flights_this_month`
+- `sensor.flight_status_tracker_flights_this_year`
+- `sensor.flight_status_tracker_flights_lifetime`
+- `sensor.flight_status_tracker_distance_today`
+- `sensor.flight_status_tracker_distance_this_month`
+- `sensor.flight_status_tracker_distance_this_year`
+- `sensor.flight_status_tracker_distance_lifetime`
+
+These metrics are recorded when a new flight is saved into the integration.
+
+- Flight sensors count newly saved flights.
+- Distance sensors accumulate great-circle route distance in `km`.
+- Rebuilds, status refreshes, and auto-prune do not change these totals.
+- Updating an existing saved flight does not increment the counters again.
 
 ## Upgrade Notes
 

@@ -137,12 +137,12 @@ def _preview_complete(flight: dict[str, Any] | None) -> tuple[bool, str | None]:
     arr_airport = ((flight.get("arr") or {}).get("airport") or {}).get("iata")
     dep = (flight.get("dep") or {})
     arr = (flight.get("arr") or {})
-    dep_sched = dep.get("scheduled")
-    arr_sched = arr.get("scheduled")
+    dep_time = dep.get("scheduled") or dep.get("estimated") or dep.get("actual")
+    arr_time = arr.get("scheduled") or arr.get("estimated") or arr.get("actual")
     if not dep_airport or not arr_airport:
         return False, "Missing departure/arrival airport. Try another provider or verify the date."
-    if not dep_sched or not arr_sched:
-        return False, "Missing scheduled departure/arrival time. Try another provider or verify the date."
+    if not dep_time or not arr_time:
+        return False, "Missing departure/arrival time. Try another provider or verify the date."
     return True, None
 
 

@@ -21,7 +21,14 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.event import async_track_point_in_utc_time, async_track_time_interval, async_track_state_change_event
 from homeassistant.util import dt as dt_util
 
-from .const import DATA_UPCOMING_FLIGHTS, DOMAIN, SIGNAL_MANUAL_FLIGHTS_UPDATED, SIGNAL_API_METRICS_UPDATED, EVENT_UPDATED
+from .const import (
+    DATA_UPCOMING_FLIGHTS,
+    DOMAIN,
+    SIGNAL_MANUAL_FLIGHTS_UPDATED,
+    SIGNAL_API_METRICS_UPDATED,
+    SIGNAL_TRAVEL_METRICS_UPDATED,
+    EVENT_UPDATED,
+)
 from .coordinator_agg import merge_segments
 from .providers.manual.itinerary import ManualItineraryProvider
 from .manual_store import async_remove_manual_flight, async_update_manual_flight
@@ -32,6 +39,7 @@ from .directory import get_airport, get_airline, warm_directory_cache
 from .rate_limit import get_blocks, is_blocked, get_block_until, get_block_reason, set_block
 from .selected import get_selected_flight, get_flight_position
 from .api_metrics import get_api_metrics_snapshot, record_api_call
+from .travel_metrics import get_travel_metrics_snapshot
 
 
 SCHEMA_VERSION = 3
@@ -139,6 +147,31 @@ def _term_gate(terminal: Any, gate: Any) -> str:
 def _join_nonempty(parts: list[str]) -> str:
     vals = [p.strip() for p in parts if isinstance(p, str) and p.strip()]
     return " · ".join(vals)
+
+
+def _focused_provider_key(entry, snapshot: dict[str, Any] | None = None) -> str | None:
+    """Resolve the single configured provider for diagnostics display."""
+    options = dict(getattr(entry, "options", {}) or {})
+    status_provider = str(options.get("status_provider") or "").strip().lower()
+    schedule_provider = str(options.get("schedule_provider") or "").strip().lower()
+    position_provider = str(options.get("position_provider") or "").strip().lower()
+    if position_provider == "same_as_status":
+        position_provider = status_provider
+
+    providers = {
+        provider
+        for provider in (status_provider, schedule_provider, position_provider)
+        if provider and provider not in ("none", "unknown")
+    }
+    if len(providers) == 1:
+        return next(iter(providers))
+
+    snapshot_providers = (snapshot or {}).get("providers") if isinstance(snapshot, dict) else {}
+    if isinstance(snapshot_providers, dict) and len(snapshot_providers) == 1:
+        only = next(iter(snapshot_providers.keys()), None)
+        return str(only) if only else None
+
+    return status_provider or schedule_provider or None
 
 
 def _fmt_event_local(ts: Any, tzname: str | None, label: str) -> str:
@@ -484,8 +517,18 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities) -> N
     entities = [
         upcoming,
         FlightDashboardSelectedFlightSensor(hass, entry),
+        FlightDashboardApiDailySensor(hass, entry),
         FlightDashboardApiMetricsSensor(hass, entry),
-        FlightDashboardApiUtilityMeterSensor(hass, entry),
+        FlightDashboardApiMonthlySensor(hass, entry),
+        FlightDashboardApiYearlySensor(hass, entry),
+        FlightDashboardFlightsDailySensor(hass, entry),
+        FlightDashboardFlightsMonthlySensor(hass, entry),
+        FlightDashboardFlightsYearlySensor(hass, entry),
+        FlightDashboardFlightsLifetimeSensor(hass, entry),
+        FlightDashboardDistanceDailySensor(hass, entry),
+        FlightDashboardDistanceMonthlySensor(hass, entry),
+        FlightDashboardDistanceYearlySensor(hass, entry),
+        FlightDashboardDistanceLifetimeSensor(hass, entry),
         FlightDashboardProviderBlockSensor(hass, entry),
     ]
     try:
@@ -1285,10 +1328,40 @@ class FlightDashboardApiMetricsSensor(SensorEntity):
             for provider, stats in providers.items():
                 if isinstance(stats, dict):
                     per_provider_totals[provider] = int(stats.get("total") or 0)
+        focused_provider = _focused_provider_key(self.entry, snapshot)
+        focused_stats = providers.get(focused_provider) if isinstance(providers, dict) and focused_provider else {}
+        if not isinstance(focused_stats, dict):
+            focused_stats = {}
 
         self._attr_native_value = int(snapshot.get("total_calls") or 0) if isinstance(snapshot, dict) else 0
         self._attrs = {
+            "day_key": snapshot.get("day_key") if isinstance(snapshot, dict) else None,
+            "daily_calls": int(snapshot.get("daily_calls") or 0) if isinstance(snapshot, dict) else 0,
+            "month_key": snapshot.get("month_key") if isinstance(snapshot, dict) else None,
+            "monthly_calls": int(snapshot.get("monthly_calls") or 0) if isinstance(snapshot, dict) else 0,
+            "year_key": snapshot.get("year_key") if isinstance(snapshot, dict) else None,
+            "yearly_calls": int(snapshot.get("yearly_calls") or 0) if isinstance(snapshot, dict) else 0,
             "updated_at": snapshot.get("updated_at") if isinstance(snapshot, dict) else None,
+            "provider": focused_provider,
+            "provider_total": int(focused_stats.get("total") or 0),
+            "provider_flows": {
+                "status": int(focused_stats.get("status") or 0),
+                "schedule": int(focused_stats.get("schedule") or 0),
+                "position": int(focused_stats.get("position") or 0),
+                "directory": int(focused_stats.get("directory") or 0),
+                "usage": int(focused_stats.get("usage") or 0),
+                "other": int(focused_stats.get("other") or 0),
+            },
+            "provider_outcomes": {
+                "success": int(focused_stats.get("success") or 0),
+                "error": int(focused_stats.get("error") or 0),
+                "rate_limited": int(focused_stats.get("rate_limited") or 0),
+                "quota_exceeded": int(focused_stats.get("quota_exceeded") or 0),
+                "timeout": int(focused_stats.get("timeout") or 0),
+                "network": int(focused_stats.get("network") or 0),
+                "auth_error": int(focused_stats.get("auth_error") or 0),
+                "unknown": int(focused_stats.get("unknown") or 0),
+            },
             "by_provider": per_provider_totals,
             "providers": providers if isinstance(providers, dict) else {},
         }
@@ -1296,18 +1369,18 @@ class FlightDashboardApiMetricsSensor(SensorEntity):
         self.async_write_ha_state()
 
 
-class FlightDashboardApiUtilityMeterSensor(SensorEntity):
-    _attr_name = "Flight Status Tracker API Utility Meter"
-    _attr_icon = "mdi:calendar-month"
+class _FlightDashboardPeriodApiSensor(SensorEntity):
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_should_poll = False
     _attr_native_unit_of_measurement = "calls"
-    _attr_suggested_object_id = "flight_status_tracker_api_utility_meter"
+
+    _value_key = ""
+    _period_key = ""
+    _by_provider_key = ""
 
     def __init__(self, hass: HomeAssistant, entry) -> None:
         self.hass = hass
         self.entry = entry
-        self._attr_unique_id = f"{DOMAIN}_api_utility_meter"
         self._unsub: Callable[[], None] | None = None
         self._attrs: dict[str, Any] = {}
 
@@ -1330,17 +1403,242 @@ class FlightDashboardApiUtilityMeterSensor(SensorEntity):
 
     def _refresh(self) -> None:
         snapshot = get_api_metrics_snapshot(self.hass)
-        monthly = int(snapshot.get("monthly_calls") or 0) if isinstance(snapshot, dict) else 0
-        month_key = snapshot.get("month_key") if isinstance(snapshot, dict) else None
-        by_provider = snapshot.get("monthly_by_provider") if isinstance(snapshot, dict) else {}
-        self._attr_native_value = monthly
+        period_value = int(snapshot.get(self._value_key) or 0) if isinstance(snapshot, dict) else 0
+        by_provider = snapshot.get(self._by_provider_key) if isinstance(snapshot, dict) else {}
+        focused_provider = _focused_provider_key(self.entry, snapshot)
+        provider_calls = 0
+        if isinstance(by_provider, dict) and focused_provider:
+            provider_calls = int(by_provider.get(focused_provider) or 0)
+        self._attr_native_value = period_value
         self._attrs = {
-            "month_key": month_key,
+            self._period_key: snapshot.get(self._period_key) if isinstance(snapshot, dict) else None,
+            "provider": focused_provider,
+            "provider_calls": provider_calls,
             "by_provider": by_provider if isinstance(by_provider, dict) else {},
             "updated_at": snapshot.get("updated_at") if isinstance(snapshot, dict) else None,
         }
         self._attr_available = True
         self.async_write_ha_state()
+
+
+class FlightDashboardApiDailySensor(_FlightDashboardPeriodApiSensor):
+    _attr_name = "Flight Status Tracker API Calls Today"
+    _attr_icon = "mdi:calendar-today"
+    _attr_suggested_object_id = "flight_status_tracker_api_calls_today"
+    _value_key = "daily_calls"
+    _period_key = "day_key"
+    _by_provider_key = "daily_by_provider"
+
+    def __init__(self, hass: HomeAssistant, entry) -> None:
+        super().__init__(hass, entry)
+        self._attr_unique_id = f"{DOMAIN}_api_calls_today"
+
+
+class FlightDashboardApiMonthlySensor(_FlightDashboardPeriodApiSensor):
+    _attr_name = "Flight Status Tracker API Utility Meter"
+    _attr_icon = "mdi:calendar-month"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_should_poll = False
+    _attr_native_unit_of_measurement = "calls"
+    _attr_suggested_object_id = "flight_status_tracker_api_utility_meter"
+    _value_key = "monthly_calls"
+    _period_key = "month_key"
+    _by_provider_key = "monthly_by_provider"
+
+    def __init__(self, hass: HomeAssistant, entry) -> None:
+        super().__init__(hass, entry)
+        self._attr_unique_id = f"{DOMAIN}_api_utility_meter"
+
+
+class FlightDashboardApiYearlySensor(_FlightDashboardPeriodApiSensor):
+    _attr_name = "Flight Status Tracker API Calls This Year"
+    _attr_icon = "mdi:calendar"
+    _attr_suggested_object_id = "flight_status_tracker_api_calls_this_year"
+    _value_key = "yearly_calls"
+    _period_key = "year_key"
+    _by_provider_key = "yearly_by_provider"
+
+    def __init__(self, hass: HomeAssistant, entry) -> None:
+        super().__init__(hass, entry)
+        self._attr_unique_id = f"{DOMAIN}_api_calls_this_year"
+
+
+class _FlightDashboardTravelMetricsSensor(SensorEntity):
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_should_poll = False
+
+    def __init__(self, hass: HomeAssistant, entry) -> None:
+        self.hass = hass
+        self.entry = entry
+        self._unsub: Callable[[], None] | None = None
+        self._attrs: dict[str, Any] = {}
+
+    async def async_added_to_hass(self) -> None:
+        @callback
+        def _kick() -> None:
+            self._refresh()
+
+        self._unsub = async_dispatcher_connect(self.hass, SIGNAL_TRAVEL_METRICS_UPDATED, _kick)
+        self._refresh()
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._unsub:
+            self._unsub()
+            self._unsub = None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return self._attrs
+
+
+class _FlightDashboardTravelPeriodSensor(_FlightDashboardTravelMetricsSensor):
+    _value_key = ""
+    _period_key = ""
+    _kind = "flights"
+
+    def _refresh(self) -> None:
+        snapshot = get_travel_metrics_snapshot(self.hass)
+        self._attr_native_value = int(snapshot.get(self._value_key) or 0) if isinstance(snapshot, dict) else 0
+        self._attrs = {
+            self._period_key: snapshot.get(self._period_key) if isinstance(snapshot, dict) else None,
+            "updated_at": snapshot.get("updated_at") if isinstance(snapshot, dict) else None,
+            "metric_kind": self._kind,
+            "last_added_flight_key": snapshot.get("last_added_flight_key") if isinstance(snapshot, dict) else None,
+        }
+        self._attr_available = True
+        self.async_write_ha_state()
+
+
+class _FlightDashboardTravelLifetimeSensor(_FlightDashboardTravelMetricsSensor):
+    _value_key = ""
+    _kind = "flights"
+
+    def _refresh(self) -> None:
+        snapshot = get_travel_metrics_snapshot(self.hass)
+        self._attr_native_value = int(snapshot.get(self._value_key) or 0) if isinstance(snapshot, dict) else 0
+        self._attrs = {
+            "day_key": snapshot.get("day_key") if isinstance(snapshot, dict) else None,
+            "daily_value": int(snapshot.get(f"daily_{self._kind}") or 0) if isinstance(snapshot, dict) else 0,
+            "month_key": snapshot.get("month_key") if isinstance(snapshot, dict) else None,
+            "monthly_value": int(snapshot.get(f"monthly_{self._kind}") or 0) if isinstance(snapshot, dict) else 0,
+            "year_key": snapshot.get("year_key") if isinstance(snapshot, dict) else None,
+            "yearly_value": int(snapshot.get(f"yearly_{self._kind}") or 0) if isinstance(snapshot, dict) else 0,
+            "updated_at": snapshot.get("updated_at") if isinstance(snapshot, dict) else None,
+            "metric_kind": self._kind,
+            "last_added_flight_key": snapshot.get("last_added_flight_key") if isinstance(snapshot, dict) else None,
+        }
+        self._attr_available = True
+        self.async_write_ha_state()
+
+
+class FlightDashboardFlightsDailySensor(_FlightDashboardTravelPeriodSensor):
+    _attr_name = "Flight Status Tracker Flights Today"
+    _attr_icon = "mdi:airplane-clock"
+    _attr_native_unit_of_measurement = "flights"
+    _attr_suggested_object_id = "flight_status_tracker_flights_today"
+    _value_key = "daily_flights"
+    _period_key = "day_key"
+    _kind = "flights"
+
+    def __init__(self, hass: HomeAssistant, entry) -> None:
+        super().__init__(hass, entry)
+        self._attr_unique_id = f"{DOMAIN}_flights_today"
+
+
+class FlightDashboardFlightsMonthlySensor(_FlightDashboardTravelPeriodSensor):
+    _attr_name = "Flight Status Tracker Flights This Month"
+    _attr_icon = "mdi:airplane-calendar"
+    _attr_native_unit_of_measurement = "flights"
+    _attr_suggested_object_id = "flight_status_tracker_flights_this_month"
+    _value_key = "monthly_flights"
+    _period_key = "month_key"
+    _kind = "flights"
+
+    def __init__(self, hass: HomeAssistant, entry) -> None:
+        super().__init__(hass, entry)
+        self._attr_unique_id = f"{DOMAIN}_flights_this_month"
+
+
+class FlightDashboardFlightsYearlySensor(_FlightDashboardTravelPeriodSensor):
+    _attr_name = "Flight Status Tracker Flights This Year"
+    _attr_icon = "mdi:airplane-check"
+    _attr_native_unit_of_measurement = "flights"
+    _attr_suggested_object_id = "flight_status_tracker_flights_this_year"
+    _value_key = "yearly_flights"
+    _period_key = "year_key"
+    _kind = "flights"
+
+    def __init__(self, hass: HomeAssistant, entry) -> None:
+        super().__init__(hass, entry)
+        self._attr_unique_id = f"{DOMAIN}_flights_this_year"
+
+
+class FlightDashboardFlightsLifetimeSensor(_FlightDashboardTravelLifetimeSensor):
+    _attr_name = "Flight Status Tracker Flights Lifetime"
+    _attr_icon = "mdi:airplane"
+    _attr_native_unit_of_measurement = "flights"
+    _attr_suggested_object_id = "flight_status_tracker_flights_lifetime"
+    _value_key = "total_flights"
+    _kind = "flights"
+
+    def __init__(self, hass: HomeAssistant, entry) -> None:
+        super().__init__(hass, entry)
+        self._attr_unique_id = f"{DOMAIN}_flights_lifetime"
+
+
+class FlightDashboardDistanceDailySensor(_FlightDashboardTravelPeriodSensor):
+    _attr_name = "Flight Status Tracker Distance Today"
+    _attr_icon = "mdi:map-marker-distance"
+    _attr_native_unit_of_measurement = "km"
+    _attr_suggested_object_id = "flight_status_tracker_distance_today"
+    _value_key = "daily_distance_km"
+    _period_key = "day_key"
+    _kind = "distance_km"
+
+    def __init__(self, hass: HomeAssistant, entry) -> None:
+        super().__init__(hass, entry)
+        self._attr_unique_id = f"{DOMAIN}_distance_today"
+
+
+class FlightDashboardDistanceMonthlySensor(_FlightDashboardTravelPeriodSensor):
+    _attr_name = "Flight Status Tracker Distance This Month"
+    _attr_icon = "mdi:map-marker-distance"
+    _attr_native_unit_of_measurement = "km"
+    _attr_suggested_object_id = "flight_status_tracker_distance_this_month"
+    _value_key = "monthly_distance_km"
+    _period_key = "month_key"
+    _kind = "distance_km"
+
+    def __init__(self, hass: HomeAssistant, entry) -> None:
+        super().__init__(hass, entry)
+        self._attr_unique_id = f"{DOMAIN}_distance_this_month"
+
+
+class FlightDashboardDistanceYearlySensor(_FlightDashboardTravelPeriodSensor):
+    _attr_name = "Flight Status Tracker Distance This Year"
+    _attr_icon = "mdi:map-marker-distance"
+    _attr_native_unit_of_measurement = "km"
+    _attr_suggested_object_id = "flight_status_tracker_distance_this_year"
+    _value_key = "yearly_distance_km"
+    _period_key = "year_key"
+    _kind = "distance_km"
+
+    def __init__(self, hass: HomeAssistant, entry) -> None:
+        super().__init__(hass, entry)
+        self._attr_unique_id = f"{DOMAIN}_distance_this_year"
+
+
+class FlightDashboardDistanceLifetimeSensor(_FlightDashboardTravelLifetimeSensor):
+    _attr_name = "Flight Status Tracker Distance Lifetime"
+    _attr_icon = "mdi:map-marker-distance"
+    _attr_native_unit_of_measurement = "km"
+    _attr_suggested_object_id = "flight_status_tracker_distance_lifetime"
+    _value_key = "total_distance_km"
+    _kind = "distance_km"
+
+    def __init__(self, hass: HomeAssistant, entry) -> None:
+        super().__init__(hass, entry)
+        self._attr_unique_id = f"{DOMAIN}_distance_lifetime"
 
 
 class FlightDashboardProviderBlockSensor(SensorEntity):

@@ -52,7 +52,17 @@ Core entities:
 - Actions: `button.flight_status_tracker_preview_from_inputs`, `button.flight_status_tracker_confirm_add_preview`, `button.flight_status_tracker_clear_preview`
 - Flight list summary: `sensor.flight_status_tracker_upcoming_flights`
 - Per-flight entities: dynamic `sensor.*` entities with attribute `flight_key` (entity_id can vary)
+- Diagnostics: `sensor.flight_status_tracker_api_calls`, `sensor.flight_status_tracker_api_calls_today`,
+  `sensor.flight_status_tracker_api_utility_meter`, `sensor.flight_status_tracker_api_calls_this_year`
+- Travel activity: `sensor.flight_status_tracker_flights_today`, `sensor.flight_status_tracker_flights_this_month`,
+  `sensor.flight_status_tracker_flights_this_year`, `sensor.flight_status_tracker_flights_lifetime`,
+  `sensor.flight_status_tracker_distance_today`, `sensor.flight_status_tracker_distance_this_month`,
+  `sensor.flight_status_tracker_distance_this_year`, `sensor.flight_status_tracker_distance_lifetime`
 - Maintenance: `button.flight_status_tracker_refresh_now`, `button.flight_status_tracker_remove_landed`, `button.flight_status_tracker_refresh_directory` (entity_id may vary)
+
+Diagnostics sensors are provider-focused: the lifetime sensor exposes the active provider plus focused flow totals
+(`schedule`, `status`, `position`, `directory`) for card UIs.
+Travel activity sensors count newly saved flights and accumulate great-circle route distance in kilometers.
 
 Workflow: set airline + number + date -> press **Search/Preview** -> press **Add Flight**.
 
