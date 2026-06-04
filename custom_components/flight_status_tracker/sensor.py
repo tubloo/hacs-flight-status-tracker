@@ -1333,7 +1333,9 @@ class FlightDashboardApiMetricsSensor(SensorEntity):
         if not isinstance(focused_stats, dict):
             focused_stats = {}
 
-        self._attr_native_value = int(snapshot.get("total_calls") or 0) if isinstance(snapshot, dict) else 0
+        overall_total = int(snapshot.get("total_calls") or 0) if isinstance(snapshot, dict) else 0
+        provider_total = int(focused_stats.get("total") or 0)
+        self._attr_native_value = provider_total
         self._attrs = {
             "day_key": snapshot.get("day_key") if isinstance(snapshot, dict) else None,
             "daily_calls": int(snapshot.get("daily_calls") or 0) if isinstance(snapshot, dict) else 0,
@@ -1341,9 +1343,10 @@ class FlightDashboardApiMetricsSensor(SensorEntity):
             "monthly_calls": int(snapshot.get("monthly_calls") or 0) if isinstance(snapshot, dict) else 0,
             "year_key": snapshot.get("year_key") if isinstance(snapshot, dict) else None,
             "yearly_calls": int(snapshot.get("yearly_calls") or 0) if isinstance(snapshot, dict) else 0,
+            "overall_total_calls": overall_total,
             "updated_at": snapshot.get("updated_at") if isinstance(snapshot, dict) else None,
             "provider": focused_provider,
-            "provider_total": int(focused_stats.get("total") or 0),
+            "provider_total": provider_total,
             "provider_flows": {
                 "status": int(focused_stats.get("status") or 0),
                 "schedule": int(focused_stats.get("schedule") or 0),
@@ -1409,9 +1412,10 @@ class _FlightDashboardPeriodApiSensor(SensorEntity):
         provider_calls = 0
         if isinstance(by_provider, dict) and focused_provider:
             provider_calls = int(by_provider.get(focused_provider) or 0)
-        self._attr_native_value = period_value
+        self._attr_native_value = provider_calls
         self._attrs = {
             self._period_key: snapshot.get(self._period_key) if isinstance(snapshot, dict) else None,
+            "overall_calls": period_value,
             "provider": focused_provider,
             "provider_calls": provider_calls,
             "by_provider": by_provider if isinstance(by_provider, dict) else {},
