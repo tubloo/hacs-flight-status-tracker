@@ -13,7 +13,7 @@ import logging
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.core import HomeAssistant, callback
@@ -1539,6 +1539,7 @@ class FlightDashboardFlightsDailySensor(_FlightDashboardTravelPeriodSensor):
     _attr_name = "Flight Status Tracker Flights Today"
     _attr_icon = "mdi:airplane-clock"
     _attr_native_unit_of_measurement = "flights"
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_suggested_object_id = "flight_status_tracker_flights_today"
     _value_key = "daily_flights"
     _period_key = "day_key"
@@ -1553,6 +1554,7 @@ class FlightDashboardFlightsMonthlySensor(_FlightDashboardTravelPeriodSensor):
     _attr_name = "Flight Status Tracker Flights This Month"
     _attr_icon = "mdi:airplane-calendar"
     _attr_native_unit_of_measurement = "flights"
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_suggested_object_id = "flight_status_tracker_flights_this_month"
     _value_key = "monthly_flights"
     _period_key = "month_key"
@@ -1567,6 +1569,7 @@ class FlightDashboardFlightsYearlySensor(_FlightDashboardTravelPeriodSensor):
     _attr_name = "Flight Status Tracker Flights This Year"
     _attr_icon = "mdi:airplane-check"
     _attr_native_unit_of_measurement = "flights"
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_suggested_object_id = "flight_status_tracker_flights_this_year"
     _value_key = "yearly_flights"
     _period_key = "year_key"
@@ -1581,6 +1584,7 @@ class FlightDashboardFlightsLifetimeSensor(_FlightDashboardTravelLifetimeSensor)
     _attr_name = "Flight Status Tracker Flights Lifetime"
     _attr_icon = "mdi:airplane"
     _attr_native_unit_of_measurement = "flights"
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_suggested_object_id = "flight_status_tracker_flights_lifetime"
     _value_key = "total_flights"
     _kind = "flights"
@@ -1594,6 +1598,7 @@ class FlightDashboardDistanceDailySensor(_FlightDashboardTravelPeriodSensor):
     _attr_name = "Flight Status Tracker Distance Today"
     _attr_icon = "mdi:map-marker-distance"
     _attr_native_unit_of_measurement = "km"
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_suggested_object_id = "flight_status_tracker_distance_today"
     _value_key = "daily_distance_km"
     _period_key = "day_key"
@@ -1608,6 +1613,7 @@ class FlightDashboardDistanceMonthlySensor(_FlightDashboardTravelPeriodSensor):
     _attr_name = "Flight Status Tracker Distance This Month"
     _attr_icon = "mdi:map-marker-distance"
     _attr_native_unit_of_measurement = "km"
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_suggested_object_id = "flight_status_tracker_distance_this_month"
     _value_key = "monthly_distance_km"
     _period_key = "month_key"
@@ -1622,6 +1628,7 @@ class FlightDashboardDistanceYearlySensor(_FlightDashboardTravelPeriodSensor):
     _attr_name = "Flight Status Tracker Distance This Year"
     _attr_icon = "mdi:map-marker-distance"
     _attr_native_unit_of_measurement = "km"
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_suggested_object_id = "flight_status_tracker_distance_this_year"
     _value_key = "yearly_distance_km"
     _period_key = "year_key"
@@ -1636,6 +1643,7 @@ class FlightDashboardDistanceLifetimeSensor(_FlightDashboardTravelLifetimeSensor
     _attr_name = "Flight Status Tracker Distance Lifetime"
     _attr_icon = "mdi:map-marker-distance"
     _attr_native_unit_of_measurement = "km"
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_suggested_object_id = "flight_status_tracker_distance_lifetime"
     _value_key = "total_distance_km"
     _kind = "distance_km"

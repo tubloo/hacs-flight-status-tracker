@@ -129,21 +129,84 @@ def _has_tz(val: str | None) -> bool:
     return _TZ_RE.search(val.strip()) is not None
 
 
-def _preview_complete(flight: dict[str, Any] | None) -> tuple[bool, str | None]:
+def _provider_label(options: dict[str, Any] | None) -> str:
+    provider = str(((options or {}).get("schedule_provider") or (options or {}).get("status_provider") or "")).strip().lower()
+    if provider == "aerodatabox":
+        return "AeroDataBox"
+    if provider == "flightapi":
+        return "FlightAPI.io"
+    return "The provider"
+
+
+def _preview_complete(flight: dict[str, Any] | None, provider_label: str) -> tuple[bool, str | None, str | None]:
     """Return whether preview has minimum required fields to add."""
     if not isinstance(flight, dict):
-        return False, "No preview flight data."
+        return False, "invalid_preview", "Preview data is invalid."
     dep_airport = ((flight.get("dep") or {}).get("airport") or {}).get("iata")
     arr_airport = ((flight.get("arr") or {}).get("airport") or {}).get("iata")
+    dep_airport_name = ((flight.get("dep") or {}).get("airport") or {}).get("name")
+    arr_airport_name = ((flight.get("arr") or {}).get("airport") or {}).get("name")
     dep = (flight.get("dep") or {})
     arr = (flight.get("arr") or {})
     dep_time = dep.get("scheduled") or dep.get("estimated") or dep.get("actual")
     arr_time = arr.get("scheduled") or arr.get("estimated") or arr.get("actual")
-    if not dep_airport or not arr_airport:
-        return False, "Missing departure/arrival airport. Try another provider or verify the date."
-    if not dep_time or not arr_time:
-        return False, "Missing departure/arrival time. Try another provider or verify the date."
-    return True, None
+    dep_airport_missing = not dep_airport and not dep_airport_name
+    arr_airport_missing = not arr_airport and not arr_airport_name
+    dep_airport_incomplete = not dep_airport
+    arr_airport_incomplete = not arr_airport
+    dep_time_missing = not dep_time
+    arr_time_missing = not arr_time
+
+    if dep_airport_missing and arr_airport_missing and dep_time_missing and arr_time_missing:
+        return False, "missing_both_airports_times", f"{provider_label} found the flight, but departure and arrival details are incomplete."
+    if dep_airport_missing and dep_time_missing and not arr_airport_missing and not arr_time_missing:
+        return False, "missing_departure_airport_time", f"{provider_label} found the flight, but departure airport and timing details are incomplete."
+    if arr_airport_incomplete and arr_time_missing and not dep_airport_missing and not dep_time_missing:
+        return False, "missing_arrival_airport_time", f"{provider_label} found the flight, but arrival airport and timing details are incomplete."
+    if dep_airport_missing and arr_airport_missing:
+        return False, "missing_both_airports", f"{provider_label} found the flight, but departure and arrival airport details are incomplete."
+    if dep_time_missing and arr_time_missing:
+        return False, "missing_both_times", f"{provider_label} found the flight, but departure and arrival timing details are incomplete."
+    if dep_airport_missing:
+        return False, "missing_departure_airport", f"{provider_label} found the flight, but departure airport details are incomplete."
+    if arr_airport_missing:
+        return False, "missing_arrival_airport", f"{provider_label} found the flight, but arrival airport details are incomplete."
+    if dep_airport_incomplete and dep_time_missing:
+        return False, "missing_departure_airport_time", f"{provider_label} found the flight, but departure airport and timing details are incomplete."
+    if arr_airport_incomplete and arr_time_missing:
+        return False, "missing_arrival_airport_time", f"{provider_label} found the flight, but arrival airport and timing details are incomplete."
+    if dep_time_missing:
+        return False, "missing_departure_time", f"{provider_label} found the flight, but departure timing details are incomplete."
+    if arr_time_missing:
+        return False, "missing_arrival_time", f"{provider_label} found the flight, but arrival timing details are incomplete."
+    if dep_airport_incomplete:
+        return False, "missing_departure_airport", f"{provider_label} found the flight, but departure airport details are incomplete."
+    if arr_airport_incomplete:
+        return False, "missing_arrival_airport", f"{provider_label} found the flight, but arrival airport details are incomplete."
+    return True, None, None
+
+
+def _preview_error_message(error_code: str | None, provider_label: str, hint: str | None = None) -> str:
+    code = (error_code or "").strip()
+    if code == "bad_query":
+        return "Enter an airline code and flight number, like TK 717."
+    if code == "bad_date":
+        return "Select a date for the flight."
+    if code == "no_match":
+        return "No matching flight was found for that date."
+    if code == "no_provider":
+        return f"{provider_label} is unavailable right now. ({code})"
+    if code == "provider_error":
+        hint_text = (hint or "").strip()
+        lower_hint = hint_text.lower()
+        if "quota" in lower_hint or "subscription" in lower_hint or "limit" in lower_hint:
+            return f"{provider_label} subscription limit has been reached. ({code})"
+        if "unauthorized" in lower_hint or "invalid" in lower_hint or "auth" in lower_hint:
+            return f"{provider_label} rejected the request. ({code})"
+        return f"{provider_label} returned an error for this flight. ({code})"
+    if code:
+        return f"{provider_label} returned an error for this flight. ({code})"
+    return hint or "Unable to preview this flight."
 
 
 async def _try_enrich_preview(
@@ -185,8 +248,9 @@ async def async_register_preview_services(
         if not date_str:
             preview = {
                 "ready": False,
-                "error": "bad_date",
-                "hint": "Provide a date in YYYY-MM-DD.",
+                "error_code": "bad_date",
+                "error": "Select a date for the flight.",
+                "hint": None,
                 "input": {
                     "airline": airline,
                     "flight_number": flight_number,
@@ -205,8 +269,9 @@ async def async_register_preview_services(
         if not airline or not flight_number:
             preview = {
                 "ready": False,
-                "error": "bad_query",
-                "hint": "Provide airline + flight_number or a query like 'AI 157'.",
+                "error_code": "bad_query",
+                "error": "Enter an airline code and flight number, like TK 717.",
+                "hint": None,
                 "input": {
                     "airline": airline,
                     "flight_number": flight_number,
@@ -268,6 +333,7 @@ async def async_register_preview_services(
         }
 
         options = options_provider()
+        provider_label = _provider_label(options)
         status_raw, err, hint = await _try_enrich_preview(
             hass, options, airline, flight_number, date_str, dep_airport, None
         )
@@ -385,10 +451,11 @@ async def async_register_preview_services(
                 preview["flight"] = f
 
             # If provider returned multiple matches, require user disambiguation
-            ready, hint = _preview_complete(preview.get("flight"))
+            ready, error_code, error_message = _preview_complete(preview.get("flight"), provider_label)
             preview["ready"] = ready
-            preview["error"] = None if ready else "incomplete"
-            preview["hint"] = None if ready else hint
+            preview["error_code"] = None if ready else error_code
+            preview["error"] = None if ready else error_message
+            preview["hint"] = None
             # Warn (but allow add) if logo is missing
             if ready:
                 f = preview.get("flight") or {}
@@ -410,8 +477,9 @@ async def async_register_preview_services(
         else:
             preview["flight"] = flight
             preview["ready"] = False
-            preview["error"] = err or "no_match_or_no_provider"
-            preview["hint"] = hint or "Either no match was found for that date, or no provider API is configured/available."
+            preview["error_code"] = err or "no_match_or_no_provider"
+            preview["error"] = _preview_error_message(err, provider_label, hint)
+            preview["hint"] = None
 
         await async_set_preview(hass, preview)
         async_dispatcher_send(hass, SIGNAL_PREVIEW_UPDATED)
