@@ -1295,6 +1295,7 @@ class FlightDashboardApiMetricsSensor(SensorEntity):
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_should_poll = False
     _attr_native_unit_of_measurement = "calls"
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
 
     def __init__(self, hass: HomeAssistant, entry) -> None:
         self.hass = hass
@@ -1376,6 +1377,7 @@ class _FlightDashboardPeriodApiSensor(SensorEntity):
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_should_poll = False
     _attr_native_unit_of_measurement = "calls"
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
 
     _value_key = ""
     _period_key = ""
