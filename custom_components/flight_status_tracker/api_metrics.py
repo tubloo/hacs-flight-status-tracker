@@ -72,6 +72,115 @@ def _default_metrics() -> dict[str, Any]:
     }
 
 
+def _as_int(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _self_heal_metrics(metrics: dict[str, Any], now=None) -> bool:
+    """Normalize persisted counters into a consistent, monotonic shape."""
+    changed = False
+    now = now or dt_util.utcnow()
+    today_key = now.strftime("%Y-%m-%d")
+    this_month_key = now.strftime("%Y-%m")
+    this_year_key = now.strftime("%Y")
+
+    providers = metrics.get("providers")
+    if not isinstance(providers, dict):
+        providers = {}
+        metrics["providers"] = providers
+        changed = True
+
+    provider_total_sum = 0
+    for provider, stats in list(providers.items()):
+        if not isinstance(stats, dict):
+            providers[provider] = _default_provider_stats()
+            stats = providers[provider]
+            changed = True
+        provider_total_sum += _as_int(stats.get("total"))
+
+    total_calls = _as_int(metrics.get("total_calls"))
+    if total_calls < provider_total_sum:
+        metrics["total_calls"] = provider_total_sum
+        total_calls = provider_total_sum
+        changed = True
+
+    daily_by_provider = metrics.get("daily_by_provider")
+    if not isinstance(daily_by_provider, dict):
+        daily_by_provider = {}
+        metrics["daily_by_provider"] = daily_by_provider
+        changed = True
+    monthly_by_provider = metrics.get("monthly_by_provider")
+    if not isinstance(monthly_by_provider, dict):
+        monthly_by_provider = {}
+        metrics["monthly_by_provider"] = monthly_by_provider
+        changed = True
+    yearly_by_provider = metrics.get("yearly_by_provider")
+    if not isinstance(yearly_by_provider, dict):
+        yearly_by_provider = {}
+        metrics["yearly_by_provider"] = yearly_by_provider
+        changed = True
+
+    daily_calls = max(_as_int(metrics.get("daily_calls")), sum(_as_int(v) for v in daily_by_provider.values()))
+    monthly_calls = max(_as_int(metrics.get("monthly_calls")), sum(_as_int(v) for v in monthly_by_provider.values()))
+    yearly_calls = max(_as_int(metrics.get("yearly_calls")), sum(_as_int(v) for v in yearly_by_provider.values()))
+
+    if metrics.get("day_key") == today_key:
+        healed_monthly = max(monthly_calls, daily_calls)
+        healed_yearly = max(yearly_calls, healed_monthly)
+        if healed_monthly != monthly_calls:
+            monthly_calls = healed_monthly
+            metrics["monthly_calls"] = monthly_calls
+            changed = True
+        if healed_yearly != yearly_calls:
+            yearly_calls = healed_yearly
+            metrics["yearly_calls"] = yearly_calls
+            changed = True
+    if metrics.get("month_key") == this_month_key:
+        healed_yearly = max(yearly_calls, monthly_calls)
+        if healed_yearly != yearly_calls:
+            yearly_calls = healed_yearly
+            metrics["yearly_calls"] = yearly_calls
+            changed = True
+
+    if metrics.get("year_key") == this_year_key and yearly_calls > total_calls:
+        metrics["total_calls"] = yearly_calls
+        total_calls = yearly_calls
+        changed = True
+
+    if _as_int(metrics.get("daily_calls")) != daily_calls:
+        metrics["daily_calls"] = daily_calls
+        changed = True
+    if _as_int(metrics.get("monthly_calls")) != monthly_calls:
+        metrics["monthly_calls"] = monthly_calls
+        changed = True
+    if _as_int(metrics.get("yearly_calls")) != yearly_calls:
+        metrics["yearly_calls"] = yearly_calls
+        changed = True
+
+    provider_keys = set(daily_by_provider) | set(monthly_by_provider) | set(yearly_by_provider)
+    for provider in provider_keys:
+        day_value = _as_int(daily_by_provider.get(provider))
+        month_value = _as_int(monthly_by_provider.get(provider))
+        year_value = _as_int(yearly_by_provider.get(provider))
+
+        if metrics.get("day_key") == today_key and month_value < day_value:
+            monthly_by_provider[provider] = day_value
+            month_value = day_value
+            changed = True
+        if metrics.get("month_key") == this_month_key and year_value < month_value:
+            yearly_by_provider[provider] = month_value
+            year_value = month_value
+            changed = True
+        if metrics.get("day_key") == today_key and metrics.get("month_key") == this_month_key and year_value < day_value:
+            yearly_by_provider[provider] = day_value
+            changed = True
+
+    return changed
+
+
 def _domain_data(hass: HomeAssistant) -> dict[str, Any]:
     return hass.data.setdefault(DOMAIN, {})
 
@@ -87,6 +196,7 @@ def _metrics_data(hass: HomeAssistant) -> dict[str, Any]:
         for key, value in defaults.items():
             if key not in metrics:
                 metrics[key] = deepcopy(value)
+    _self_heal_metrics(metrics)
     return metrics
 
 
@@ -98,9 +208,12 @@ async def async_init_api_metrics(hass: HomeAssistant) -> None:
     store = Store(hass, _STORE_VERSION, _STORE_KEY)
     loaded = await store.async_load()
     metrics = loaded if isinstance(loaded, dict) else _default_metrics()
+    healed = _self_heal_metrics(metrics)
     data["api_metrics_store"] = store
     data["api_metrics"] = metrics
     data["api_metrics_initialized"] = True
+    if healed:
+        await store.async_save(metrics)
 
 
 async def _async_save_metrics(hass: HomeAssistant) -> None:

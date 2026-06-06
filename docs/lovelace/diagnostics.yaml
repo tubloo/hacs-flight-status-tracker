@@ -15,7 +15,7 @@ cards:
         icon_color: green
 
       - type: custom:mushroom-entity-card
-        entity: sensor.flight_status_tracker_api_utility_meter
+        entity: sensor.flight_status_tracker_api_calls_this_month
         name: Monthly API Calls
         icon: mdi:calendar-month
         icon_color: blue
@@ -109,7 +109,7 @@ cards:
     stat_types:
       - sum
     entities:
-      - sensor.flight_status_tracker_api_utility_meter
+      - sensor.flight_status_tracker_api_calls_this_month
 
   - type: statistics-graph
     title: Daily Flights Trend (14d)

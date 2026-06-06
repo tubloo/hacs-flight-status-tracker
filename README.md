@@ -53,7 +53,7 @@ Core entities:
 - Flight list summary: `sensor.flight_status_tracker_upcoming_flights`
 - Per-flight entities: dynamic `sensor.*` entities with attribute `flight_key` (entity_id can vary)
 - Diagnostics: `sensor.flight_status_tracker_api_calls`, `sensor.flight_status_tracker_api_calls_today`,
-  `sensor.flight_status_tracker_api_utility_meter`, `sensor.flight_status_tracker_api_calls_this_year`
+  `sensor.flight_status_tracker_api_calls_this_month`, `sensor.flight_status_tracker_api_calls_this_year`
 - Travel activity: `sensor.flight_status_tracker_flights_today`, `sensor.flight_status_tracker_flights_this_month`,
   `sensor.flight_status_tracker_flights_this_year`, `sensor.flight_status_tracker_flights_lifetime`,
   `sensor.flight_status_tracker_distance_today`, `sensor.flight_status_tracker_distance_this_month`,

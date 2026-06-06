@@ -157,7 +157,7 @@ Exact refresh intervals depend on your configured polling schedule.
 The integration exposes diagnostic API usage sensors:
 
 - `sensor.flight_status_tracker_api_calls_today`
-- `sensor.flight_status_tracker_api_utility_meter`
+- `sensor.flight_status_tracker_api_calls_this_month`
 - `sensor.flight_status_tracker_api_calls_this_year`
 - `sensor.flight_status_tracker_api_calls`
 

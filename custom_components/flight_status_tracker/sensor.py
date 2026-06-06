@@ -513,6 +513,7 @@ MANUAL_FULL_REFRESH_MIN_INTERVAL = timedelta(seconds=45)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities) -> None:
+    await _async_migrate_api_monthly_entity_id(hass)
     upcoming = FlightDashboardUpcomingFlightsSensor(hass, entry, async_add_entities)
     entities = [
         upcoming,
@@ -540,6 +541,24 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities) -> N
     # Do not block setup on initial updates; rebuild runs in background.
     async_add_entities(entities, False)
     hass.data.setdefault(DOMAIN, {}).setdefault("upcoming_sensors", {})[entry.entry_id] = upcoming
+
+
+async def _async_migrate_api_monthly_entity_id(hass: HomeAssistant) -> None:
+    registry = er.async_get(hass)
+    old_unique_id = f"{DOMAIN}_api_utility_meter"
+    old_entity_id = registry.async_get_entity_id("sensor", DOMAIN, old_unique_id)
+    if not old_entity_id:
+        return
+    desired_entity_id = "sensor.flight_status_tracker_api_calls_this_month"
+    if old_entity_id == desired_entity_id:
+        return
+    existing = registry.async_get(desired_entity_id)
+    if existing is not None and existing.platform != DOMAIN:
+        return
+    try:
+        registry.async_update_entity(old_entity_id, new_entity_id=desired_entity_id)
+    except ValueError:
+        return
 
 
 def _flight_entity_slug(flight_key: str) -> str:
@@ -984,12 +1003,10 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
                 if not isinstance(f, dict):
                     continue
                 status = (f.get("status_state") or "").lower()
-                if status not in ("arrived", "cancelled", "canceled", "landed"):
-                    pruned.append(f)
-                    continue
                 arr = (f.get("arr") or {})
                 arr_air = (arr.get("airport") or {})
                 arr_time = arr.get("actual") or arr.get("estimated") or arr.get("scheduled")
+                is_terminal = status in ("arrived", "cancelled", "canceled", "landed")
                 if not isinstance(arr_time, str):
                     pruned.append(f)
                     continue
@@ -1005,6 +1022,9 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
                         if await async_remove_manual_flight(self.hass, f.get("flight_key", "")):
                             removed_manual = True
                     # Always drop from the list (even for non-manual sources)
+                    continue
+                if not is_terminal:
+                    pruned.append(f)
                     continue
                 pruned.append(f)
             flights = pruned
@@ -1441,12 +1461,12 @@ class FlightDashboardApiDailySensor(_FlightDashboardPeriodApiSensor):
 
 
 class FlightDashboardApiMonthlySensor(_FlightDashboardPeriodApiSensor):
-    _attr_name = "Flight Status Tracker API Utility Meter"
+    _attr_name = "Flight Status Tracker API Calls This Month"
     _attr_icon = "mdi:calendar-month"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_should_poll = False
     _attr_native_unit_of_measurement = "calls"
-    _attr_suggested_object_id = "flight_status_tracker_api_utility_meter"
+    _attr_suggested_object_id = "flight_status_tracker_api_calls_this_month"
     _value_key = "monthly_calls"
     _period_key = "month_key"
     _by_provider_key = "monthly_by_provider"

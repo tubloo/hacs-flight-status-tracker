@@ -30,7 +30,7 @@ Cards should default to these integration entities/actions (while allowing overr
 - `sensor.flight_status_tracker_upcoming_flights`
 - `sensor.flight_status_tracker_api_calls_today`
 - `sensor.flight_status_tracker_api_calls`
-- `sensor.flight_status_tracker_api_utility_meter`
+- `sensor.flight_status_tracker_api_calls_this_month`
 - `sensor.flight_status_tracker_api_calls_this_year`
 - `sensor.flight_status_tracker_flights_today`
 - `sensor.flight_status_tracker_flights_this_month`
