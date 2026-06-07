@@ -19,8 +19,12 @@ This file defines **default instructions for AI coding assistants** working in t
 - **Canonical flight schema**: a plain `dict` (Schema v3) with `dep`/`arr` blocks and ISO timestamps (generally normalized to UTC). See `custom_components/flight_status_tracker/sensor.py` for the schema doc + example.
 - **Stable identity**: `flight_key` is the primary identifier (used for merges, status cache, and manual store upserts). Keep it stable and avoid changing how keys are constructed unless you also provide a migration.
 - **Preview → confirm flow**: `preview_flight` stores a preview object immediately, then optionally enriches via schedule providers; `confirm_add` persists the canonical flight record into the manual store.
+- **Preview error handling**: add/confirm failures should be surfaced back into the stored preview object (`preview.error`) for card rendering. Do not route integration-owned UX errors into Home Assistant persistent notifications unless the user explicitly asks for that behavior.
+- **Manual add window**: manual add uses the best available departure/arrival timestamp in priority order `scheduled` → `estimated` → `actual`. Flights older than the configured `include_past_hours` window should be rejected rather than saved invisibly.
 - **Status pipeline**: provider status is normalized via `status_resolver.apply_status()`; computed fields like `delay_status`, `delay_minutes`, and durations are derived in `status_manager.py`.
 - **Smart refresh**: status refresh uses per-flight `next_check` scheduling and an in-memory `status_cache` in `hass.data[DOMAIN]` (not a fixed global polling loop).
+- **Status persistence**: when a refresh yields meaningful new signal, persist the refreshed manual-flight status back into storage so manual flights do not regress to stale scheduled values after restart/rebuild.
+- **Next refresh UI data**: `status_manager.py` is responsible for surfacing `next_status_check_at`, and `sensor.py` converts that into UI fields such as `next_update_in_min` / `next_update_abs` for cards.
 - **Directory caching**: airport/airline directory data is cached with TTL and refreshed periodically; prefer cached lookups and avoid repeated provider calls.
 - **Compatibility mindset**: keep imports/option keys tolerant (see `const.py` “compat superset”) and preserve legacy timestamp fields where required for stored manual flights.
 
@@ -75,10 +79,12 @@ If adding logic that’s easy to unit test, add/extend tests in `testing/` (only
   - Ensure `AGENTS.md` is updated if any workflows/conventions changed during the work.
   - Provide a short **release summary** (what changed, any breaking changes/migration notes, and how you validated).
   - Include an **agent-instructions summary** if `AGENTS.md` changed (what you updated and why).
+- Any logic change that alters integration behavior, data flow, error handling, storage semantics, refresh scheduling, or card-facing attributes must trigger an `AGENTS.md` review. Update this file in the same change whenever the existing instructions no longer describe the current logic.
 
 ## Commits
 - When preparing to commit, check whether `AGENTS.md` should be updated to reflect any new conventions/workflows introduced by the changes.
 - If `AGENTS.md` changed, include a brief summary of those instruction changes alongside the code change summary.
+- Treat `AGENTS.md` updates as mandatory when a change modifies any of the architectural bullets above. Do not defer those documentation updates to a later cleanup commit.
 
 ## How to Use This Document
 When starting a task:

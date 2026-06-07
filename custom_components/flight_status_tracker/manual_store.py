@@ -78,6 +78,14 @@ def _get_include_past_hours(hass: HomeAssistant) -> int:
 
 
 def _validate_add_window(hass: HomeAssistant, flight: dict[str, Any]) -> None:
+    state = _normalize_status_state(flight.get("status_state"), None)
+    if state in ("Arrived", "Cancelled", "Landed"):
+        if state == "Arrived":
+            raise ValueError("This flight has already arrived and cannot be added.")
+        if state == "Landed":
+            raise ValueError("This flight has already landed and cannot be added.")
+        raise ValueError("This flight is cancelled and cannot be added.")
+
     dep_dt = _parse_dt(_best_time(flight.get("dep")))
     if dep_dt is None:
         return

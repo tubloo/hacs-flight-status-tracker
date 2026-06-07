@@ -257,11 +257,33 @@ class FlightStatusTrackerPreviewFromInputsButton(ButtonEntity):
         notes = str(inputs.get(KEY_NOTES) or "").strip()
 
         if not airline or not flight_number or not date_str:
-            await _notify(
+            missing = []
+            if not airline:
+                missing.append("airline")
+            if not flight_number:
+                missing.append("flight number")
+            if not date_str:
+                missing.append("date")
+            message = "Enter " + ", ".join(missing) + " before searching."
+            await async_set_preview(
                 self.hass,
-                "Flight Status Tracker",
-                "Set Airline, Flight number, and Date, then press Preview.",
+                {
+                    "ready": False,
+                    "error_code": "missing_inputs",
+                    "error": message,
+                    "hint": None,
+                    "warning": None,
+                    "input": {
+                        "airline": airline,
+                        "flight_number": flight_number,
+                        "dep_airport": dep_airport,
+                        "date": date_str,
+                        "travellers": [travellers] if travellers else [],
+                        "notes": notes,
+                    },
+                },
             )
+            async_dispatcher_send(self.hass, SIGNAL_PREVIEW_UPDATED)
             return
 
         data: dict[str, object] = {
