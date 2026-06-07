@@ -101,6 +101,25 @@ def _parse_dt(val: Any) -> datetime | None:
     return None
 
 
+def _persisted_status_snapshot(flight: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "status_state": flight.get("status_state"),
+        "status_updated_at": flight.get("status_updated_at"),
+        "status": dict(flight.get("status") or {}) if isinstance(flight.get("status"), dict) else None,
+        "delay_status": flight.get("delay_status"),
+        "delay_status_key": flight.get("delay_status_key"),
+        "delay_minutes": flight.get("delay_minutes"),
+        "duration_minutes": flight.get("duration_minutes"),
+        "duration_scheduled_minutes": flight.get("duration_scheduled_minutes"),
+        "duration_estimated_minutes": flight.get("duration_estimated_minutes"),
+        "duration_actual_minutes": flight.get("duration_actual_minutes"),
+        "aircraft_image_url": flight.get("aircraft_image_url"),
+        "aircraft_type": flight.get("aircraft_type"),
+        "dep": dict(flight.get("dep") or {}) if isinstance(flight.get("dep"), dict) else None,
+        "arr": dict(flight.get("arr") or {}) if isinstance(flight.get("arr"), dict) else None,
+    }
+
+
 def _date_in_tz(val: Any, tzname: str | None) -> str | None:
     dt = _parse_dt(val)
     if not dt:
@@ -424,6 +443,7 @@ async def async_update_statuses(
                 continue
             f["status"] = status
             f["status_updated_at"] = cached.get("updated_at")
+            f["next_status_check_at"] = cached.get("next_check")
             apply_status(f, status)
             _coerce_state_by_time(f, now)
             _apply_assumed_arrival(f, now)
@@ -458,6 +478,7 @@ async def async_update_statuses(
         if force_refresh or not next_check_dt or now >= dt_util.as_utc(next_check_dt):
             due.append(f)
         else:
+            f["next_status_check_at"] = next_check_dt.isoformat()
             next_times.append(dt_util.as_utc(next_check_dt))
 
     if not refresh_due:
@@ -471,6 +492,7 @@ async def async_update_statuses(
     # Refresh due flights (sequential to limit API calls)
     for f in due:
         flight_now = dt_util.utcnow()
+        previous_snapshot = _persisted_status_snapshot(f)
         state = (f.get("status_state") or "unknown").lower()
         if state in ("arrived", "cancelled", "canceled", "landed"):
             key = f.get("flight_key")
@@ -571,6 +593,16 @@ async def async_update_statuses(
         f["delay_status_key"] = (delay_state or "unknown").lower().replace(" ", "_")
         f["delay_minutes"] = delay_minutes
         f.update(_compute_durations(f))
+        if (f.get("source") or "manual") == "manual":
+            current_snapshot = _persisted_status_snapshot(f)
+            if current_snapshot != previous_snapshot:
+                from .manual_store import async_update_manual_flight
+
+                await async_update_manual_flight(
+                    hass,
+                    key,
+                    current_snapshot,
+                )
         # Compute next refresh time
         refresh_seconds = compute_next_refresh_seconds(f, flight_now, poll_cfg)
         if refresh_seconds is None:
@@ -579,6 +611,7 @@ async def async_update_statuses(
         # Anchor next-check to the actual completion time of this flight refresh
         # to avoid immediate re-due loops when a cycle takes long.
         next_dt = dt_util.utcnow() + timedelta(seconds=refresh_seconds)
+        f["next_status_check_at"] = next_dt.isoformat()
         cache[key] = {
             "status": f.get("status") if isinstance(f.get("status"), dict) else status,
             # Keep the timestamp of the latest successful status fetch.

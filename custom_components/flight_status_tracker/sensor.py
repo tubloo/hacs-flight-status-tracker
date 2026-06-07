@@ -414,6 +414,14 @@ def _build_ui_block(flight: dict[str, Any], now_utc, options: dict[str, Any]) ->
         updated_ago_min = int(max(0, round((dt_util.as_utc(now_utc) - upd).total_seconds() / 60)))
         updated_abs = dt_util.as_local(upd).strftime("%Y-%m-%d %H:%M:%S %Z")
 
+    next_update = _parse_dt(flight.get("next_status_check_at"))
+    next_update_in_min = None
+    next_update_abs = None
+    if next_update:
+        nxt = dt_util.as_utc(next_update) if next_update.tzinfo else dt_util.as_utc(dt_util.as_local(next_update))
+        next_update_in_min = int(max(0, round((nxt - dt_util.as_utc(now_utc)).total_seconds() / 60)))
+        next_update_abs = dt_util.as_local(nxt).strftime("%Y-%m-%d %H:%M:%S %Z")
+
     status = flight.get("status") if isinstance(flight.get("status"), dict) else {}
     status_error_text = status.get("error_message") or status.get("error")
 
@@ -462,6 +470,8 @@ def _build_ui_block(flight: dict[str, Any], now_utc, options: dict[str, Any]) ->
         "status_error_text": status_error_text,
         "updated_ago_min": updated_ago_min,
         "updated_abs": updated_abs,
+        "next_update_in_min": next_update_in_min,
+        "next_update_abs": next_update_abs,
         "source": status.get("provider") or "—",
     }
 
@@ -877,7 +887,13 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
 
         stalled = False
         stalled_reason = ""
-        if self._next_refresh_at is not None and now > (self._next_refresh_at + WATCHDOG_OVERDUE_GRACE):
+        if self._next_refresh_unsub is None:
+            stalled = True
+            stalled_reason = "missing_refresh_subscription"
+        elif self._next_refresh_at is None:
+            stalled = True
+            stalled_reason = "missing_refresh_time"
+        elif now > (self._next_refresh_at + WATCHDOG_OVERDUE_GRACE):
             stalled = True
             stalled_reason = "refresh_overdue"
         elif self._last_rebuild_at is None:

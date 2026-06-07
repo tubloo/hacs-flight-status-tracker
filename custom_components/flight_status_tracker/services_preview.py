@@ -42,15 +42,23 @@ from .preview_store import async_get_preview, async_set_preview
 _LOGGER = logging.getLogger(__name__)
 
 async def _notify(hass: HomeAssistant, title: str, message: str) -> None:
-    try:
-        await hass.services.async_call(
-            "persistent_notification",
-            "create",
-            {"title": title, "message": message},
-            blocking=False,
-        )
-    except Exception:
-        _LOGGER.info("%s: %s", title, message)
+    _LOGGER.info("%s: %s", title, message)
+
+
+async def _set_preview_error(
+    hass: HomeAssistant,
+    preview: dict[str, Any],
+    message: str,
+    *,
+    error_code: str = "confirm_add_failed",
+) -> None:
+    updated = dict(preview)
+    updated["ready"] = False
+    updated["error_code"] = error_code
+    updated["error"] = message
+    updated["hint"] = None
+    await async_set_preview(hass, updated)
+    async_dispatcher_send(hass, SIGNAL_PREVIEW_UPDATED)
 
 
 SERVICE_SCHEMA_PREVIEW = vol.Schema(
@@ -491,6 +499,8 @@ async def async_register_preview_services(
             return
         f = (preview or {}).get("flight")
         if not isinstance(f, dict):
+            if isinstance(preview, dict):
+                await _set_preview_error(hass, preview, "Preview data is invalid. Clear and retry.", error_code="invalid_preview")
             return
         # Backstop: compute flight_key if missing
         if not f.get("flight_key"):
@@ -503,6 +513,8 @@ async def async_register_preview_services(
             async_dispatcher_send(hass, SIGNAL_PREVIEW_UPDATED)
         except Exception as e:
             _LOGGER.exception("Confirm add failed")
+            if isinstance(preview, dict):
+                await _set_preview_error(hass, preview, str(e))
 
     async def _svc_clear(call: ServiceCall) -> None:
         """Clear any stored preview."""

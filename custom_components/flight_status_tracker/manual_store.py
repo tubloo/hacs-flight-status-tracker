@@ -60,6 +60,38 @@ def _get_nested(raw: dict[str, Any], *path: str) -> Any:
     return cur
 
 
+def _best_time(block: Any) -> Any:
+    if not isinstance(block, dict):
+        return None
+    return block.get("scheduled") or block.get("estimated") or block.get("actual")
+
+
+def _get_include_past_hours(hass: HomeAssistant) -> int:
+    entries = hass.config_entries.async_entries(DOMAIN)
+    if not entries:
+        return 24
+    opts = dict(entries[0].options or {})
+    try:
+        return int(opts.get("include_past_hours", 24))
+    except Exception:
+        return 24
+
+
+def _validate_add_window(hass: HomeAssistant, flight: dict[str, Any]) -> None:
+    dep_dt = _parse_dt(_best_time(flight.get("dep")))
+    if dep_dt is None:
+        return
+    dep_utc = dt_util.as_utc(dep_dt) if dep_dt.tzinfo else dt_util.as_utc(dt_util.as_local(dep_dt))
+    now = dt_util.utcnow()
+    hours_ago = (now - dep_utc).total_seconds() / 3600.0
+    include_past_hours = _get_include_past_hours(hass)
+    if hours_ago > include_past_hours:
+        raise ValueError(
+            "This flight is in the past and cannot be added. "
+            f"It departed about {hours_ago:.1f} hours ago and your include_past_hours setting is {include_past_hours}."
+        )
+
+
 def _mk_flight_key(airline_code: str, flight_number: str, dep_airport: str, dep_date: str) -> str:
     # dep_date is YYYY-MM-DD
     return f"{airline_code}-{flight_number}-{dep_airport}-{dep_date}"
@@ -250,8 +282,10 @@ async def async_add_manual_flight_record(hass: HomeAssistant, flight: dict[str, 
     flight_number = flight.get("flight_number") or ""
     dep_airport = _get_nested(flight, "dep", "airport", "iata") or ""
     arr_airport = _get_nested(flight, "arr", "airport", "iata") or ""
-    dep_sched = (flight.get("dep") or {}).get("scheduled")
-    arr_sched = (flight.get("arr") or {}).get("scheduled")
+    dep_sched = _best_time(flight.get("dep"))
+    arr_sched = _best_time(flight.get("arr"))
+
+    _validate_add_window(hass, flight)
 
     if not airline_code or not flight_number or not dep_airport or not arr_airport:
         raise ValueError("airline_code, flight_number, dep_airport, and arr_airport are required")

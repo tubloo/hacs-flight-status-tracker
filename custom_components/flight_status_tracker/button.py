@@ -8,9 +8,10 @@ import logging
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, EVENT_UPDATED
+from .const import DOMAIN, EVENT_UPDATED, SIGNAL_PREVIEW_UPDATED
 from .const import SERVICE_CLEAR_MANUAL_FLIGHTS, SERVICE_REMOVE_MANUAL_FLIGHT
 from .const import SERVICE_CLEAR_PREVIEW, SERVICE_PREVIEW_FLIGHT, SERVICE_REFRESH_NOW, SERVICE_PRUNE_LANDED
 from .preview_store import async_get_preview, async_set_preview
@@ -35,6 +36,22 @@ _LOGGER = logging.getLogger(__name__)
 
 async def _notify(_hass: HomeAssistant, title: str, message: str) -> None:
     _LOGGER.info("%s: %s", title, message)
+
+
+async def _set_preview_error(
+    hass: HomeAssistant,
+    preview: dict,
+    message: str,
+    *,
+    error_code: str = "confirm_add_failed",
+) -> None:
+    updated = dict(preview)
+    updated["ready"] = False
+    updated["error_code"] = error_code
+    updated["error"] = message
+    updated["hint"] = None
+    await async_set_preview(hass, updated)
+    async_dispatcher_send(hass, SIGNAL_PREVIEW_UPDATED)
 
 
 def _extract_flight_key(selected: str) -> str:
@@ -149,16 +166,15 @@ class FlightDashboardConfirmAddPreviewButton(ButtonEntity):
         preview = await async_get_preview(self.hass)
 
         if not preview:
-            await _notify(self.hass, "Flight Status Tracker", "No preview found. Run Preview Flight first.")
+            _LOGGER.info("Flight Status Tracker: No preview found. Run Preview Flight first.")
             return
 
         if not preview.get("ready"):
-            await _notify(self.hass, "Flight Status Tracker", "Preview is incomplete. Fix it before confirming.")
             return
 
         flight = preview.get("flight")
         if not isinstance(flight, dict):
-            await _notify(self.hass, "Flight Status Tracker", "Preview data is invalid. Clear and retry.")
+            await _set_preview_error(self.hass, preview, "Preview data is invalid. Clear and retry.", error_code="invalid_preview")
             return
 
         # Ensure travellers always exists (empty allowed)
@@ -168,7 +184,7 @@ class FlightDashboardConfirmAddPreviewButton(ButtonEntity):
         try:
             flight_key = await async_add_manual_flight_record(self.hass, flight)
         except Exception as e:
-            await _notify(self.hass, "Flight Status Tracker - Add failed", str(e))
+            await _set_preview_error(self.hass, preview, str(e))
             return
         added = {"flight_key": flight_key, **flight}
         await async_set_preview(self.hass, None)
@@ -185,15 +201,6 @@ class FlightDashboardConfirmAddPreviewButton(ButtonEntity):
                 break
 
         if visible:
-            dep_iata = (((added.get("dep") or {}).get("airport") or {}).get("iata") or "")
-            arr_iata = (((added.get("arr") or {}).get("airport") or {}).get("iata") or "")
-            await _notify(
-                self.hass,
-                "Flight Status Tracker - Added",
-                f"Now visible:\n{added.get('airline_code')} {added.get('flight_number')} "
-                f"{dep_iata} → {arr_iata}\n"
-                f"Flight key: {flight_key}",
-            )
             return
 
         # Not visible: check if filtered out by include_past_hours
@@ -204,22 +211,17 @@ class FlightDashboardConfirmAddPreviewButton(ButtonEntity):
             now = dt_util.utcnow()
             hours_ago = (now - dep_utc).total_seconds() / 3600.0
             if hours_ago > include_past_hours:
-                await _notify(
-                    self.hass,
-                    "Flight Status Tracker - Saved (filtered)",
-                    "Flight was saved, but it's not shown because it departed too long ago.\n"
-                    f"Departed ~{hours_ago:.1f}h ago, include_past_hours={include_past_hours}.\n"
-                    "Fix: increase 'Include past hours' in Flight Status Tracker options.\n"
-                    f"Flight key: {flight_key}",
+                _LOGGER.info(
+                    "Flight Status Tracker - Saved (filtered): departed ~%.1fh ago, include_past_hours=%s, flight_key=%s",
+                    hours_ago,
+                    include_past_hours,
+                    flight_key,
                 )
                 return
 
-        await _notify(
-            self.hass,
-            "Flight Status Tracker - Saved",
-            "Flight was saved, but it didn't appear in Upcoming Flights yet.\n"
-            "If it's not filtered, then the sensor/provider wiring needs checking.\n"
-            f"Flight key: {flight_key}",
+        _LOGGER.info(
+            "Flight Status Tracker - Saved but not visible yet: flight_key=%s",
+            flight_key,
         )
 
 

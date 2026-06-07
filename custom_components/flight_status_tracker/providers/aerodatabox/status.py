@@ -111,6 +111,40 @@ class AeroDataBoxStatusProvider:
             return None
 
     @classmethod
+    def _status_priority(cls, item: dict[str, Any]) -> int:
+        status = str(item.get("status") or "").strip().lower()
+        if status in ("arrived", "landed"):
+            return 0
+        if status in ("enroute", "en route", "active", "airborne", "departed", "cruising", "approaching"):
+            return 1
+        if status in ("delayed", "expected"):
+            return 2
+        if status in ("boarding", "gateclosed", "gate_closed", "gate closed", "checkin", "check-in"):
+            return 3
+        if status in ("scheduled", "unknown", ""):
+            return 4
+        return 5
+
+    @classmethod
+    def _latest_signal_dt(cls, item: dict[str, Any]) -> datetime | None:
+        dep = item.get("departure") or {}
+        arr = item.get("arrival") or {}
+        candidates = [
+            (((arr.get("runwayTime") or {}).get("utc")) if isinstance(arr.get("runwayTime"), dict) else None),
+            (((arr.get("predictedTime") or {}).get("utc")) if isinstance(arr.get("predictedTime"), dict) else None),
+            (((arr.get("revisedTime") or {}).get("utc")) if isinstance(arr.get("revisedTime"), dict) else None),
+            (((dep.get("runwayTime") or {}).get("utc")) if isinstance(dep.get("runwayTime"), dict) else None),
+            (((dep.get("predictedTime") or {}).get("utc")) if isinstance(dep.get("predictedTime"), dict) else None),
+            (((dep.get("revisedTime") or {}).get("utc")) if isinstance(dep.get("revisedTime"), dict) else None),
+            item.get("lastUpdatedUtc"),
+        ]
+        for candidate in candidates:
+            dt = cls._parse_iso(candidate if isinstance(candidate, str) else None)
+            if dt is not None:
+                return dt.astimezone(timezone.utc) if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        return None
+
+    @classmethod
     def _date_yyyy_mm_dd(cls, flight: dict[str, Any]) -> str | None:
         dep = flight.get("dep") or {}
         local = dep.get("scheduled_local")
@@ -153,8 +187,9 @@ class AeroDataBoxStatusProvider:
                     return None
         return None
 
-    @staticmethod
+    @classmethod
     def _pick_best(
+        cls,
         items: list[dict[str, Any]],
         dep_filter: str | None,
         arr_filter: str | None,
@@ -175,9 +210,7 @@ class AeroDataBoxStatusProvider:
 
         def sort_key(it: dict[str, Any]) -> tuple[int, int, float, str]:
             dep_sched = (((it.get("departure") or {}).get("scheduledTime") or {}).get("utc") or "").strip()
-            st = str(it.get("status") or "")
-            # Prefer flights with richer status over Unknown for same day.
-            status_rank = 0 if st and st.lower() != "unknown" else 1
+            status_rank = cls._status_priority(it)
             dep_dt = AeroDataBoxStatusProvider._parse_iso(dep_sched)
             if dep_dt is not None:
                 dep_dt = dep_dt.astimezone(timezone.utc) if dep_dt.tzinfo else dep_dt.replace(tzinfo=timezone.utc)
@@ -186,9 +219,13 @@ class AeroDataBoxStatusProvider:
                 delta_sec = abs((dep_dt - requested_dep_utc).total_seconds())
             else:
                 delta_sec = float("inf")
+            signal_dt = cls._latest_signal_dt(it)
+            latest_rank = 0.0
+            if signal_dt is not None:
+                latest_rank = -signal_dt.timestamp()
             # Prefer newer sched if all else equal.
             has_sched = 0 if dep_dt else 1
-            return (status_rank, has_sched, delta_sec, dep_sched)
+            return (status_rank, has_sched, delta_sec, latest_rank, dep_sched)
 
         return sorted(pool, key=sort_key)[0] if pool else None
 
