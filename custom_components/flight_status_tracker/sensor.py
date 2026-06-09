@@ -132,6 +132,44 @@ def _status_label(raw_state: Any) -> str:
     return raw.title() if raw else "Unknown"
 
 
+def _provider_status_short(raw_state: Any) -> str | None:
+    raw = str(raw_state or "").strip().lower()
+    if not raw or raw in ("unknown", "n/a", "na"):
+        return None
+    mapping = {
+        "scheduled": "Planned",
+        "schedule": "Planned",
+        "plan": "Planned",
+        "planned": "Planned",
+        "checkin": "Check-in",
+        "check-in": "Check-in",
+        "boarding": "Boarding",
+        "gateclosed": "Gate closed",
+        "gate_closed": "Gate closed",
+        "gate closed": "Gate closed",
+        "expected": "Expected",
+        "delayed": "Delayed",
+        "active": "Active",
+        "enroute": "En route",
+        "en route": "En route",
+        "en-route": "En route",
+        "in air": "In air",
+        "in-air": "In air",
+        "airborne": "Airborne",
+        "departed": "Departed",
+        "cruising": "Cruising",
+        "approaching": "Approaching",
+        "landed": "Landed",
+        "arrived": "Arrived",
+        "arrival": "Arrival",
+        "arrived_gate": "At gate",
+        "cancelled": "Cancelled",
+        "canceled": "Cancelled",
+        "diverted": "Diverted",
+    }
+    return mapping.get(raw) or raw.title()
+
+
 def _term_gate(terminal: Any, gate: Any) -> str:
     term = str(terminal or "").strip()
     g = str(gate or "").strip()
@@ -278,6 +316,10 @@ def _build_ui_block(flight: dict[str, Any], now_utc, options: dict[str, Any]) ->
     raw_state = (flight.get("status_state") or "unknown")
     state_label = _status_label(raw_state)
     route_state = "Scheduled" if str(raw_state).strip().lower() == "unknown" else state_label
+    status = flight.get("status") if isinstance(flight.get("status"), dict) else {}
+    provider_state_label = _provider_status_short(status.get("provider_state") or status.get("state"))
+    if provider_state_label and provider_state_label.lower() == state_label.lower():
+        provider_state_label = None
 
     delay_key = (
         flight.get("delay_status_key")
@@ -422,7 +464,6 @@ def _build_ui_block(flight: dict[str, Any], now_utc, options: dict[str, Any]) ->
         next_update_in_min = int(max(0, round((nxt - dt_util.as_utc(now_utc)).total_seconds() / 60)))
         next_update_abs = dt_util.as_local(nxt).strftime("%Y-%m-%d %H:%M:%S %Z")
 
-    status = flight.get("status") if isinstance(flight.get("status"), dict) else {}
     status_error_text = status.get("error_message") or status.get("error")
 
     return {
@@ -468,6 +509,7 @@ def _build_ui_block(flight: dict[str, Any], now_utc, options: dict[str, Any]) ->
         "progress_end_ts": progress_end_ts,
         "arr_target_ts": arr_target_ts,
         "status_error_text": status_error_text,
+        "provider_state_label": provider_state_label,
         "updated_ago_min": updated_ago_min,
         "updated_abs": updated_abs,
         "next_update_in_min": next_update_in_min,
