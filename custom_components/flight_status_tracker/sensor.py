@@ -136,20 +136,16 @@ def _provider_status_short(raw_state: Any) -> str | None:
     raw = str(raw_state or "").strip().lower()
     if not raw or raw in ("unknown", "n/a", "na"):
         return None
+    if raw in ("scheduled", "schedule", "plan", "planned", "expected", "active", "arrival"):
+        return None
     mapping = {
-        "scheduled": "Planned",
-        "schedule": "Planned",
-        "plan": "Planned",
-        "planned": "Planned",
         "checkin": "Check-in",
         "check-in": "Check-in",
         "boarding": "Boarding",
         "gateclosed": "Gate closed",
         "gate_closed": "Gate closed",
         "gate closed": "Gate closed",
-        "expected": "Expected",
         "delayed": "Delayed",
-        "active": "Active",
         "enroute": "En route",
         "en route": "En route",
         "en-route": "En route",
@@ -161,7 +157,6 @@ def _provider_status_short(raw_state: Any) -> str | None:
         "approaching": "Approaching",
         "landed": "Landed",
         "arrived": "Arrived",
-        "arrival": "Arrival",
         "arrived_gate": "At gate",
         "cancelled": "Cancelled",
         "canceled": "Cancelled",
