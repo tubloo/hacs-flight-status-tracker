@@ -365,6 +365,12 @@ def compute_next_refresh_seconds(
     if state in ("arrived", "cancelled", "canceled", "landed"):
         return None
 
+    dep_refresh_anchor = _best_time(flight, "dep", ["scheduled", "estimated", "actual"])
+    if dep_refresh_anchor:
+        refresh_start = dep_refresh_anchor - timedelta(hours=48)
+        if now < refresh_start:
+            return max(60, int((refresh_start - now).total_seconds()))
+
     # Take Off window
     if dep:
         dep_window_start = dep - timedelta(minutes=dep_pre_minutes)
@@ -474,6 +480,18 @@ async def async_update_statuses(
             next_check_dt = next_check
         else:
             next_check_dt = None
+
+        dep_refresh_anchor = _best_time(f, "dep", ["scheduled", "estimated", "actual"])
+        if not force_refresh and dep_refresh_anchor:
+            deferred_start_dt = dep_refresh_anchor - timedelta(hours=48)
+            if now < deferred_start_dt:
+                next_check_dt = max(
+                    dt_util.as_utc(next_check_dt) if next_check_dt else deferred_start_dt,
+                    deferred_start_dt,
+                )
+                f["next_status_check_at"] = next_check_dt.isoformat()
+                next_times.append(next_check_dt)
+                continue
 
         if force_refresh or not next_check_dt or now >= dt_util.as_utc(next_check_dt):
             due.append(f)
