@@ -61,12 +61,18 @@ def _default_metrics() -> dict[str, Any]:
         "day_key": None,
         "daily_calls": 0,
         "daily_by_provider": {},
+        "daily_by_flow": {},
+        "daily_by_provider_flow": {},
         "month_key": None,
         "monthly_calls": 0,
         "monthly_by_provider": {},
+        "monthly_by_flow": {},
+        "monthly_by_provider_flow": {},
         "year_key": None,
         "yearly_calls": 0,
         "yearly_by_provider": {},
+        "yearly_by_flow": {},
+        "yearly_by_provider_flow": {},
         "providers": {},
         "updated_at": None,
     }
@@ -112,15 +118,45 @@ def _self_heal_metrics(metrics: dict[str, Any], now=None) -> bool:
         daily_by_provider = {}
         metrics["daily_by_provider"] = daily_by_provider
         changed = True
+    daily_by_flow = metrics.get("daily_by_flow")
+    if not isinstance(daily_by_flow, dict):
+        daily_by_flow = {}
+        metrics["daily_by_flow"] = daily_by_flow
+        changed = True
+    daily_by_provider_flow = metrics.get("daily_by_provider_flow")
+    if not isinstance(daily_by_provider_flow, dict):
+        daily_by_provider_flow = {}
+        metrics["daily_by_provider_flow"] = daily_by_provider_flow
+        changed = True
     monthly_by_provider = metrics.get("monthly_by_provider")
     if not isinstance(monthly_by_provider, dict):
         monthly_by_provider = {}
         metrics["monthly_by_provider"] = monthly_by_provider
         changed = True
+    monthly_by_flow = metrics.get("monthly_by_flow")
+    if not isinstance(monthly_by_flow, dict):
+        monthly_by_flow = {}
+        metrics["monthly_by_flow"] = monthly_by_flow
+        changed = True
+    monthly_by_provider_flow = metrics.get("monthly_by_provider_flow")
+    if not isinstance(monthly_by_provider_flow, dict):
+        monthly_by_provider_flow = {}
+        metrics["monthly_by_provider_flow"] = monthly_by_provider_flow
+        changed = True
     yearly_by_provider = metrics.get("yearly_by_provider")
     if not isinstance(yearly_by_provider, dict):
         yearly_by_provider = {}
         metrics["yearly_by_provider"] = yearly_by_provider
+        changed = True
+    yearly_by_flow = metrics.get("yearly_by_flow")
+    if not isinstance(yearly_by_flow, dict):
+        yearly_by_flow = {}
+        metrics["yearly_by_flow"] = yearly_by_flow
+        changed = True
+    yearly_by_provider_flow = metrics.get("yearly_by_provider_flow")
+    if not isinstance(yearly_by_provider_flow, dict):
+        yearly_by_provider_flow = {}
+        metrics["yearly_by_provider_flow"] = yearly_by_provider_flow
         changed = True
 
     daily_calls = max(_as_int(metrics.get("daily_calls")), sum(_as_int(v) for v in daily_by_provider.values()))
@@ -293,14 +329,20 @@ def _record_api_call_on_loop(
         metrics["day_key"] = day_key
         metrics["daily_calls"] = 0
         metrics["daily_by_provider"] = {}
+        metrics["daily_by_flow"] = {}
+        metrics["daily_by_provider_flow"] = {}
     if metrics.get("month_key") != month_key:
         metrics["month_key"] = month_key
         metrics["monthly_calls"] = 0
         metrics["monthly_by_provider"] = {}
+        metrics["monthly_by_flow"] = {}
+        metrics["monthly_by_provider_flow"] = {}
     if metrics.get("year_key") != year_key:
         metrics["year_key"] = year_key
         metrics["yearly_calls"] = 0
         metrics["yearly_by_provider"] = {}
+        metrics["yearly_by_flow"] = {}
+        metrics["yearly_by_provider_flow"] = {}
 
     stats = providers.get(provider_key)
     if not isinstance(stats, dict):
@@ -316,16 +358,58 @@ def _record_api_call_on_loop(
         daily_by_provider = {}
         metrics["daily_by_provider"] = daily_by_provider
     daily_by_provider[provider_key] = int(daily_by_provider.get(provider_key) or 0) + 1
+    daily_by_flow = metrics.get("daily_by_flow")
+    if not isinstance(daily_by_flow, dict):
+        daily_by_flow = {}
+        metrics["daily_by_flow"] = daily_by_flow
+    daily_by_flow[flow_key] = int(daily_by_flow.get(flow_key) or 0) + 1
+    daily_by_provider_flow = metrics.get("daily_by_provider_flow")
+    if not isinstance(daily_by_provider_flow, dict):
+        daily_by_provider_flow = {}
+        metrics["daily_by_provider_flow"] = daily_by_provider_flow
+    provider_daily_flows = daily_by_provider_flow.get(provider_key)
+    if not isinstance(provider_daily_flows, dict):
+        provider_daily_flows = {}
+        daily_by_provider_flow[provider_key] = provider_daily_flows
+    provider_daily_flows[flow_key] = int(provider_daily_flows.get(flow_key) or 0) + 1
     monthly_by_provider = metrics.get("monthly_by_provider")
     if not isinstance(monthly_by_provider, dict):
         monthly_by_provider = {}
         metrics["monthly_by_provider"] = monthly_by_provider
     monthly_by_provider[provider_key] = int(monthly_by_provider.get(provider_key) or 0) + 1
+    monthly_by_flow = metrics.get("monthly_by_flow")
+    if not isinstance(monthly_by_flow, dict):
+        monthly_by_flow = {}
+        metrics["monthly_by_flow"] = monthly_by_flow
+    monthly_by_flow[flow_key] = int(monthly_by_flow.get(flow_key) or 0) + 1
+    monthly_by_provider_flow = metrics.get("monthly_by_provider_flow")
+    if not isinstance(monthly_by_provider_flow, dict):
+        monthly_by_provider_flow = {}
+        metrics["monthly_by_provider_flow"] = monthly_by_provider_flow
+    provider_monthly_flows = monthly_by_provider_flow.get(provider_key)
+    if not isinstance(provider_monthly_flows, dict):
+        provider_monthly_flows = {}
+        monthly_by_provider_flow[provider_key] = provider_monthly_flows
+    provider_monthly_flows[flow_key] = int(provider_monthly_flows.get(flow_key) or 0) + 1
     yearly_by_provider = metrics.get("yearly_by_provider")
     if not isinstance(yearly_by_provider, dict):
         yearly_by_provider = {}
         metrics["yearly_by_provider"] = yearly_by_provider
     yearly_by_provider[provider_key] = int(yearly_by_provider.get(provider_key) or 0) + 1
+    yearly_by_flow = metrics.get("yearly_by_flow")
+    if not isinstance(yearly_by_flow, dict):
+        yearly_by_flow = {}
+        metrics["yearly_by_flow"] = yearly_by_flow
+    yearly_by_flow[flow_key] = int(yearly_by_flow.get(flow_key) or 0) + 1
+    yearly_by_provider_flow = metrics.get("yearly_by_provider_flow")
+    if not isinstance(yearly_by_provider_flow, dict):
+        yearly_by_provider_flow = {}
+        metrics["yearly_by_provider_flow"] = yearly_by_provider_flow
+    provider_yearly_flows = yearly_by_provider_flow.get(provider_key)
+    if not isinstance(provider_yearly_flows, dict):
+        provider_yearly_flows = {}
+        yearly_by_provider_flow[provider_key] = provider_yearly_flows
+    provider_yearly_flows[flow_key] = int(provider_yearly_flows.get(flow_key) or 0) + 1
     stats["total"] = int(stats.get("total") or 0) + 1
 
     if flow_key in ("status", "schedule", "position", "directory", "usage"):

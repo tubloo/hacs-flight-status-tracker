@@ -1455,6 +1455,8 @@ class _FlightDashboardPeriodApiSensor(SensorEntity):
     _value_key = ""
     _period_key = ""
     _by_provider_key = ""
+    _by_flow_key = ""
+    _by_provider_flow_key = ""
 
     def __init__(self, hass: HomeAssistant, entry) -> None:
         self.hass = hass
@@ -1483,10 +1485,15 @@ class _FlightDashboardPeriodApiSensor(SensorEntity):
         snapshot = get_api_metrics_snapshot(self.hass)
         period_value = int(snapshot.get(self._value_key) or 0) if isinstance(snapshot, dict) else 0
         by_provider = snapshot.get(self._by_provider_key) if isinstance(snapshot, dict) else {}
+        by_flow = snapshot.get(self._by_flow_key) if isinstance(snapshot, dict) else {}
+        by_provider_flow = snapshot.get(self._by_provider_flow_key) if isinstance(snapshot, dict) else {}
         focused_provider = _focused_provider_key(self.entry, snapshot)
         provider_calls = 0
         if isinstance(by_provider, dict) and focused_provider:
             provider_calls = int(by_provider.get(focused_provider) or 0)
+        provider_flows = {}
+        if isinstance(by_provider_flow, dict) and focused_provider:
+            provider_flows = by_provider_flow.get(focused_provider) or {}
         self._attr_native_value = provider_calls
         self._attrs = {
             self._period_key: snapshot.get(self._period_key) if isinstance(snapshot, dict) else None,
@@ -1494,6 +1501,8 @@ class _FlightDashboardPeriodApiSensor(SensorEntity):
             "provider": focused_provider,
             "provider_calls": provider_calls,
             "by_provider": by_provider if isinstance(by_provider, dict) else {},
+            "by_flow": by_flow if isinstance(by_flow, dict) else {},
+            "provider_flows": provider_flows if isinstance(provider_flows, dict) else {},
             "updated_at": snapshot.get("updated_at") if isinstance(snapshot, dict) else None,
         }
         self._attr_available = True
@@ -1507,6 +1516,8 @@ class FlightDashboardApiDailySensor(_FlightDashboardPeriodApiSensor):
     _value_key = "daily_calls"
     _period_key = "day_key"
     _by_provider_key = "daily_by_provider"
+    _by_flow_key = "daily_by_flow"
+    _by_provider_flow_key = "daily_by_provider_flow"
 
     def __init__(self, hass: HomeAssistant, entry) -> None:
         super().__init__(hass, entry)
@@ -1523,6 +1534,8 @@ class FlightDashboardApiMonthlySensor(_FlightDashboardPeriodApiSensor):
     _value_key = "monthly_calls"
     _period_key = "month_key"
     _by_provider_key = "monthly_by_provider"
+    _by_flow_key = "monthly_by_flow"
+    _by_provider_flow_key = "monthly_by_provider_flow"
 
     def __init__(self, hass: HomeAssistant, entry) -> None:
         super().__init__(hass, entry)
@@ -1536,6 +1549,8 @@ class FlightDashboardApiYearlySensor(_FlightDashboardPeriodApiSensor):
     _value_key = "yearly_calls"
     _period_key = "year_key"
     _by_provider_key = "yearly_by_provider"
+    _by_flow_key = "yearly_by_flow"
+    _by_provider_flow_key = "yearly_by_provider_flow"
 
     def __init__(self, hass: HomeAssistant, entry) -> None:
         super().__init__(hass, entry)

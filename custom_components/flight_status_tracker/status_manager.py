@@ -354,6 +354,17 @@ def compute_next_refresh_seconds(
     arr = _best_time(flight, "arr", ["actual", "estimated", "scheduled"])
     state = (flight.get("status_state") or "unknown").lower()
 
+    def _cap_before_arrival(seconds: int) -> int:
+        if not arr:
+            return max(60, seconds)
+        arr_window_start = arr - timedelta(minutes=arr_pre_minutes)
+        if now >= arr_window_start:
+            return max(60, seconds)
+        to_arrival_window = int((arr_window_start - now).total_seconds())
+        if to_arrival_window <= 0:
+            return max(60, seconds)
+        return max(60, min(seconds, to_arrival_window))
+
     if not dep and not arr:
         return None
 
@@ -376,7 +387,7 @@ def compute_next_refresh_seconds(
         dep_window_start = dep - timedelta(minutes=dep_pre_minutes)
         dep_window_end = dep + timedelta(minutes=dep_post_minutes)
         if dep_window_start <= now <= dep_window_end:
-            return max(ttl_seconds, cfg["dep_int_seconds"])
+            return _cap_before_arrival(max(ttl_seconds, cfg["dep_int_seconds"]))
 
     # Landing window
     if arr:
@@ -390,7 +401,7 @@ def compute_next_refresh_seconds(
         mid_start = dep + timedelta(minutes=dep_post_minutes)
         mid_end = arr - timedelta(minutes=arr_pre_minutes)
         if mid_start <= now <= mid_end:
-            return max(ttl_seconds, cfg["mid_flight_int_seconds"])
+            return _cap_before_arrival(max(ttl_seconds, cfg["mid_flight_int_seconds"]))
 
     if dep and now < dep:
         delta = dep - now
@@ -400,12 +411,12 @@ def compute_next_refresh_seconds(
             boundary = dep - timedelta(hours=far_thr_hours)
             to_boundary_seconds = int((boundary - now).total_seconds())
             if to_boundary_seconds > 0:
-                return max(60, min(cfg["far_int_seconds"], to_boundary_seconds))
-            return max(60, cfg["prepare_to_travel_int_seconds"])
-        return max(ttl_seconds, cfg["prepare_to_travel_int_seconds"])
+                return _cap_before_arrival(max(60, min(cfg["far_int_seconds"], to_boundary_seconds)))
+            return _cap_before_arrival(max(60, cfg["prepare_to_travel_int_seconds"]))
+        return _cap_before_arrival(max(ttl_seconds, cfg["prepare_to_travel_int_seconds"]))
 
     # Fallback: periodic but not frequent
-    return max(ttl_seconds, 60 * 60)
+    return _cap_before_arrival(max(ttl_seconds, 60 * 60))
 
 
 
