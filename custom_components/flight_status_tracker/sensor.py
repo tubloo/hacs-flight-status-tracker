@@ -46,6 +46,7 @@ SCHEMA_VERSION = 3
 _LOGGER = logging.getLogger(__name__)
 _DIR_ENRICH_STATE_KEY = "dir_enrich_state"
 _FLIGHT_ENTITY_STATE_KEY = "flight_entities"
+_API_FLOW_KEYS = ("status", "schedule", "position", "directory", "usage", "other")
 
 
 def _dir_enrich_state(hass: HomeAssistant) -> dict[str, dict[str, Any]]:
@@ -1494,6 +1495,8 @@ class _FlightDashboardPeriodApiSensor(SensorEntity):
         provider_flows = {}
         if isinstance(by_provider_flow, dict) and focused_provider:
             provider_flows = by_provider_flow.get(focused_provider) or {}
+        flow_totals = by_flow if isinstance(by_flow, dict) else {}
+        provider_flow_totals = provider_flows if isinstance(provider_flows, dict) else {}
         self._attr_native_value = provider_calls
         self._attrs = {
             self._period_key: snapshot.get(self._period_key) if isinstance(snapshot, dict) else None,
@@ -1501,10 +1504,13 @@ class _FlightDashboardPeriodApiSensor(SensorEntity):
             "provider": focused_provider,
             "provider_calls": provider_calls,
             "by_provider": by_provider if isinstance(by_provider, dict) else {},
-            "by_flow": by_flow if isinstance(by_flow, dict) else {},
-            "provider_flows": provider_flows if isinstance(provider_flows, dict) else {},
+            "by_flow": flow_totals,
+            "provider_flows": provider_flow_totals,
             "updated_at": snapshot.get("updated_at") if isinstance(snapshot, dict) else None,
         }
+        for flow_key in _API_FLOW_KEYS:
+            self._attrs[f"flow_{flow_key}"] = int(flow_totals.get(flow_key) or 0)
+            self._attrs[f"provider_flow_{flow_key}"] = int(provider_flow_totals.get(flow_key) or 0)
         self._attr_available = True
         self.async_write_ha_state()
 

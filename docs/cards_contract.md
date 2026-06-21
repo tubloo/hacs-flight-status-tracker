@@ -47,6 +47,10 @@ Cards should default to these integration entities/actions (while allowing overr
 Diagnostics cards should treat provider usage as single-provider-focused:
 - Read the active provider from `sensor.flight_status_tracker_api_calls` attribute `provider`
 - Read focused provider flow totals from `sensor.flight_status_tracker_api_calls` attribute `provider_flows`
+- Read period flow breakdowns from the daily/monthly/yearly sensors via:
+  - nested attributes `by_flow` and `provider_flows`
+  - flat attributes `flow_status`, `flow_schedule`, `flow_position`, `flow_directory`, `flow_usage`, `flow_other`
+  - flat focused-provider attributes `provider_flow_status`, `provider_flow_schedule`, `provider_flow_position`, `provider_flow_directory`, `provider_flow_usage`, `provider_flow_other`
 - Read period totals from the daily/monthly/yearly/lifetime sensors rather than rendering a multi-provider comparison by default
 - Read travel activity totals from the flight-count and distance sensors rather than deriving them from active flights
 
