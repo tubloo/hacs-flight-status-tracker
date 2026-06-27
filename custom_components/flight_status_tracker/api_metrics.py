@@ -159,6 +159,39 @@ def _self_heal_metrics(metrics: dict[str, Any], now=None) -> bool:
         metrics["yearly_by_provider_flow"] = yearly_by_provider_flow
         changed = True
 
+    if metrics.get("day_key") != today_key:
+        metrics["day_key"] = today_key
+        metrics["daily_calls"] = 0
+        metrics["daily_by_provider"] = {}
+        metrics["daily_by_flow"] = {}
+        metrics["daily_by_provider_flow"] = {}
+        daily_by_provider = metrics["daily_by_provider"]
+        daily_by_flow = metrics["daily_by_flow"]
+        daily_by_provider_flow = metrics["daily_by_provider_flow"]
+        changed = True
+
+    if metrics.get("month_key") != this_month_key:
+        metrics["month_key"] = this_month_key
+        metrics["monthly_calls"] = 0
+        metrics["monthly_by_provider"] = {}
+        metrics["monthly_by_flow"] = {}
+        metrics["monthly_by_provider_flow"] = {}
+        monthly_by_provider = metrics["monthly_by_provider"]
+        monthly_by_flow = metrics["monthly_by_flow"]
+        monthly_by_provider_flow = metrics["monthly_by_provider_flow"]
+        changed = True
+
+    if metrics.get("year_key") != this_year_key:
+        metrics["year_key"] = this_year_key
+        metrics["yearly_calls"] = 0
+        metrics["yearly_by_provider"] = {}
+        metrics["yearly_by_flow"] = {}
+        metrics["yearly_by_provider_flow"] = {}
+        yearly_by_provider = metrics["yearly_by_provider"]
+        yearly_by_flow = metrics["yearly_by_flow"]
+        yearly_by_provider_flow = metrics["yearly_by_provider_flow"]
+        changed = True
+
     daily_calls = max(_as_int(metrics.get("daily_calls")), sum(_as_int(v) for v in daily_by_provider.values()))
     monthly_calls = max(_as_int(metrics.get("monthly_calls")), sum(_as_int(v) for v in monthly_by_provider.values()))
     yearly_calls = max(_as_int(metrics.get("yearly_calls")), sum(_as_int(v) for v in yearly_by_provider.values()))

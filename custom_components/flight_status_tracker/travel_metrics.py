@@ -55,6 +55,22 @@ def _metrics_data(hass: HomeAssistant) -> dict[str, Any]:
         for key, value in defaults.items():
             if key not in metrics:
                 metrics[key] = deepcopy(value)
+    now = dt_util.utcnow()
+    day_key = now.strftime("%Y-%m-%d")
+    month_key = now.strftime("%Y-%m")
+    year_key = now.strftime("%Y")
+    if metrics.get("day_key") != day_key:
+        metrics["day_key"] = day_key
+        metrics["daily_flights"] = 0
+        metrics["daily_distance_km"] = 0
+    if metrics.get("month_key") != month_key:
+        metrics["month_key"] = month_key
+        metrics["monthly_flights"] = 0
+        metrics["monthly_distance_km"] = 0
+    if metrics.get("year_key") != year_key:
+        metrics["year_key"] = year_key
+        metrics["yearly_flights"] = 0
+        metrics["yearly_distance_km"] = 0
     return metrics
 
 
