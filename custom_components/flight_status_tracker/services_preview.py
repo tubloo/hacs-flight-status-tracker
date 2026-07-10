@@ -428,12 +428,37 @@ async def async_register_preview_services(
                 except Exception:
                     return None
 
+            def _to_viewer_local(ts: Any, tzname: str | None) -> str | None:
+                if not ts or not isinstance(ts, str):
+                    return None
+                dt = dt_util.parse_datetime(ts)
+                if not dt:
+                    return None
+                if not dt.tzinfo and tzname:
+                    try:
+                        dt = dt.replace(tzinfo=ZoneInfo(tzname))
+                    except Exception:
+                        return dt.isoformat()
+                try:
+                    return dt_util.as_local(dt).isoformat()
+                except Exception:
+                    try:
+                        return dt.isoformat()
+                    except Exception:
+                        return None
+
             dep["scheduled_local"] = _to_local(dep.get("scheduled"), dep_air.get("tz"))
             dep["estimated_local"] = _to_local(dep.get("estimated"), dep_air.get("tz"))
             dep["actual_local"] = _to_local(dep.get("actual"), dep_air.get("tz"))
+            dep["scheduled_viewer_local"] = _to_viewer_local(dep.get("scheduled"), dep_air.get("tz"))
+            dep["estimated_viewer_local"] = _to_viewer_local(dep.get("estimated"), dep_air.get("tz"))
+            dep["actual_viewer_local"] = _to_viewer_local(dep.get("actual"), dep_air.get("tz"))
             arr["scheduled_local"] = _to_local(arr.get("scheduled"), arr_air.get("tz"))
             arr["estimated_local"] = _to_local(arr.get("estimated"), arr_air.get("tz"))
             arr["actual_local"] = _to_local(arr.get("actual"), arr_air.get("tz"))
+            arr["scheduled_viewer_local"] = _to_viewer_local(arr.get("scheduled"), arr_air.get("tz"))
+            arr["estimated_viewer_local"] = _to_viewer_local(arr.get("estimated"), arr_air.get("tz"))
+            arr["actual_viewer_local"] = _to_viewer_local(arr.get("actual"), arr_air.get("tz"))
             f["dep"] = dep
             f["arr"] = arr
 

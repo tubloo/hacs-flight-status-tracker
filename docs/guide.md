@@ -85,6 +85,7 @@ These are configured in the integration Options UI (Settings > Devices & Service
 - Schedule provider: used for preview/add to find airports + scheduled times.
   - There is no schedule `auto` mode. You must select one schedule provider.
   - Preview/add uses only the selected provider (no cross-provider fallback).
+  - Preview payloads expose both airport-local (`dep/arr.*_local`) and Home Assistant-local (`dep/arr.*_viewer_local`) timestamps.
 - Status provider: used for ongoing status updates.
 - Position provider: optional; adds live position when supported.
 - Airline/Airport data source is always hybrid: selected provider first, then inbuilt cache.

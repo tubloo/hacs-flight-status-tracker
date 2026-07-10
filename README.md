@@ -74,6 +74,7 @@ For a detailed walkthrough and troubleshooting, see `docs/guide.md`.
 - Schedule lookup is **strict**: only the selected schedule provider is used (no cross-provider fallback).
 - **Status provider** is used for live status updates.
 - Provider timestamps are normalized to UTC internally.
+- Preview payloads expose both airport-local (`*_local`) and Home Assistant-local (`*_viewer_local`) timestamps for UI rendering.
 - **Position provider** is optional and is disabled by default.
 - Airport/airline directory enrichment is handled internally using data files and cached locally (refresh ~monthly).
 - You can force a directory refresh anytime via `button.flight_status_tracker_refresh_directory` (your entity_id may vary; check Developer Tools).
@@ -155,6 +156,7 @@ If a card is not listed in HACS, add its GitHub repo under **HACS > Frontend > C
   
 ## Upgrade Notes
 
+- `v2.2.13`: Preview/search now exposes Home Assistant-local `*_viewer_local` timestamps for UI rendering while preserving existing airport-local `*_local` fields for flight matching and status logic.
 - `v2.1.9`: Stability pass for flicker: tightened meaningful-change gating to ignore volatile timestamp/progress fields and added write-gating for selected/binary/select/helper sensors so no-op refresh cycles stop publishing redundant state updates.
 - `v2.1.8`: Further reduced Lovelace flicker by excluding volatile timestamp/age fields (`status_updated_at`, `ui.updated_*`, `ui.position_age_min`) from flight/list change signatures so timestamp-only churn no longer forces card rerenders.
 - `v2.1.7`: Reduced Lovelace card flicker by gating `upcoming_flights` and per-flight sensor state writes/events on meaningful payload changes, preventing no-op rebuilds from forcing rerenders.

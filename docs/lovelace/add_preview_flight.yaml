@@ -69,8 +69,8 @@ cards:
       {% set airline = f.get('airline_name') or '' %}
       {% set ac = f.get('aircraft_type') or '' %}
       {% set logo = f.get('airline_logo_url') or ("https://pics.avs.io/64/64/" ~ (f.get('airline_code','')|upper) ~ ".png") %}
-      {% set dep_time = dep.get('scheduled_local') or dep.get('scheduled') %}
-      {% set arr_time = arr.get('scheduled_local') or arr.get('scheduled') %}
+      {% set dep_time = dep.get('scheduled_viewer_local') or dep.get('scheduled_local') or dep.get('scheduled') %}
+      {% set arr_time = arr.get('scheduled_viewer_local') or arr.get('scheduled_local') or arr.get('scheduled') %}
       {% set dep_hm = dep_time and (dep_time|string).replace(' ','T').split('T')[1][:5] %}
       {% set arr_hm = arr_time and (arr_time|string).replace(' ','T').split('T')[1][:5] %}
       {% set dep_city = dep_air.get('city') or dep_air.get('name') or dep_code %}
