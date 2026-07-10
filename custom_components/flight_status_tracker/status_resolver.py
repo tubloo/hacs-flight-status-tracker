@@ -15,6 +15,8 @@ from typing import Any
 
 from homeassistant.util import dt as dt_util
 
+from .directory import normalize_airline_name
+
 
 def _pick_iso(*vals: Any) -> str | None:
     """Pick first non-empty datetime/iso and return ISO string (UTC if datetime)."""
@@ -233,8 +235,12 @@ def apply_status(flight: dict[str, Any], status: dict[str, Any] | None) -> dict[
 
     # optional airline/airport identity enrichment
     # Keep airline name only at flight level to avoid duplication
-    if status.get("airline_name") and not flight.get("airline_name"):
-        flight["airline_name"] = status.get("airline_name")
+    normalized_airline_name = normalize_airline_name(
+        status.get("airline_code") or flight.get("airline_code"),
+        status.get("airline_name"),
+    )
+    if normalized_airline_name and flight.get("airline_name") != normalized_airline_name:
+        flight["airline_name"] = normalized_airline_name
     status.pop("airline_name", None)
     if status.get("airline_logo_url") and not flight.get("airline_logo_url"):
         flight["airline_logo_url"] = status.get("airline_logo_url")

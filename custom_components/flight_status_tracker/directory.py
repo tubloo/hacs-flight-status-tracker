@@ -46,7 +46,7 @@ _PROVIDER_CACHE_TTL_DAYS = 7
 _META_AIRPORTSDATA_FETCHED_AT = "airportsdata_fetched_at"
 _META_OPENFLIGHTS_AIRLINES_FETCHED_AT = "openflights_airlines_fetched_at"
 _META_OPENFLIGHTS_AIRLINES_SCHEMA_VERSION = "openflights_airlines_schema_version"
-_OPENFLIGHTS_AIRLINES_SCHEMA_VERSION = 4
+_OPENFLIGHTS_AIRLINES_SCHEMA_VERSION = 5
 CONF_DIRECTORY_SOURCE_MODE = "directory_source_mode"
 DIRECTORY_SOURCE_INBUILT = "inbuilt"
 DIRECTORY_SOURCE_PROVIDER = "provider"
@@ -88,6 +88,27 @@ def _is_provider_source(entry: dict[str, Any] | None) -> bool:
         return False
     src = str(entry.get("source") or "").strip().lower()
     return src in _PROVIDER_SOURCES
+
+
+def normalize_airline_name(iata: str | None, name: str | None) -> str | None:
+    _ = iata
+    normalized = str(name or "").strip()
+    return normalized or None
+
+
+def _normalize_airline_record(entry: dict[str, Any] | None, iata: str | None = None) -> dict[str, Any] | None:
+    if not isinstance(entry, dict):
+        return entry
+    code = str(iata or entry.get("iata") or "").strip().upper()
+    if not code:
+        return entry
+    normalized_name = normalize_airline_name(code, entry.get("name"))
+    source = str(entry.get("source") or "").strip().lower()
+    if source == "openflights" and entry.get("ambiguous"):
+        normalized_name = None
+    if normalized_name == entry.get("name") and entry.get("iata") == code:
+        return entry
+    return {**entry, "iata": code, "name": normalized_name}
 
 
 def _provider_order(options: dict[str, Any]) -> list[str]:
@@ -435,6 +456,12 @@ async def _get_airport_inbuilt(hass: HomeAssistant, iata: str) -> dict[str, Any]
 async def _get_airline_inbuilt(hass: HomeAssistant, iata: str) -> dict[str, Any] | None:
     await _ensure_openflights_airlines_cache(hass, ttl_days=_CACHE_TTL_DAYS)
     cached = await async_get_airline(hass, iata)
+    normalized_cached = _normalize_airline_record(cached, iata)
+    if normalized_cached != cached and normalized_cached:
+        await async_set_airline(hass, iata, normalized_cached)
+        cached = await async_get_airline(hass, iata)
+    else:
+        cached = normalized_cached
     if is_fresh(cached, _CACHE_TTL_DAYS):
         return cached
 
@@ -467,6 +494,7 @@ async def _get_airline_inbuilt(hass: HomeAssistant, iata: str) -> dict[str, Any]
         )
     if records:
         data = _select_airline_record(records) or {}
+        data = _normalize_airline_record(data, iata) or data
         data["logo_url"] = airline_logo_url(iata)
         await async_set_airline(hass, iata, data)
         return await async_get_airline(hass, iata)
@@ -502,7 +530,7 @@ async def _get_airline_provider_flightapi(hass: HomeAssistant, options: dict[str
     data = {
         "iata": iata,
         "icao": _pick_str(c, ("icao", "icao_code", "icaoCode")),
-        "name": _pick_str(c, ("name", "airline_name", "airlineName")),
+        "name": normalize_airline_name(iata, _pick_str(c, ("name", "airline_name", "airlineName"))),
         "country": _pick_str(c, ("country", "country_name", "countryName")),
         "source": _SOURCE_FLIGHTAPI,
         "logo_url": airline_logo_url(iata),
@@ -689,7 +717,15 @@ async def get_airline(hass: HomeAssistant, options: dict[str, Any], iata: str) -
         return None
 
     mode = _directory_mode(options)
+    if mode == DIRECTORY_SOURCE_INBUILT:
+        await _ensure_openflights_airlines_cache(hass, ttl_days=_CACHE_TTL_DAYS)
     cached = await async_get_airline(hass, iata)
+    normalized_cached = _normalize_airline_record(cached, iata)
+    if normalized_cached != cached and normalized_cached:
+        await async_set_airline(hass, iata, normalized_cached)
+        cached = await async_get_airline(hass, iata)
+    else:
+        cached = normalized_cached
     if mode == DIRECTORY_SOURCE_PROVIDER and _is_provider_source(cached) and is_fresh(cached, _PROVIDER_CACHE_TTL_DAYS):
         return cached
     if mode == DIRECTORY_SOURCE_INBUILT and is_fresh(cached, _CACHE_TTL_DAYS):

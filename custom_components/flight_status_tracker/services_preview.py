@@ -35,7 +35,7 @@ from .const import (
 )
 from .manual_store import async_add_manual_flight_record
 from .schedule_lookup import lookup_schedule
-from .directory import airline_logo_url, get_airport, get_airline, upsert_airline_aircraft_image
+from .directory import airline_logo_url, get_airport, get_airline, normalize_airline_name, upsert_airline_aircraft_image
 from .tz_short import tz_short_name
 from .preview_store import async_get_preview, async_set_preview
 
@@ -349,6 +349,10 @@ async def async_register_preview_services(
         if status_raw:
             if isinstance(status_raw, dict) and isinstance(status_raw.get("flight"), dict):
                 enriched = status_raw.get("flight")
+                enriched["airline_name"] = normalize_airline_name(
+                    enriched.get("airline_code"),
+                    enriched.get("airline_name"),
+                )
                 enriched["travellers"] = travellers
                 enriched["notes"] = notes
                 preview["flight"] = enriched
