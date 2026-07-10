@@ -35,7 +35,7 @@ from .manual_store import async_remove_manual_flight, async_update_manual_flight
 from .status_manager import async_update_statuses
 from .status_resolver import _normalize_iso_in_tz
 from .tz_short import tz_short_name
-from .directory import get_airport, get_airline, warm_directory_cache
+from .directory import get_airport, get_airline, normalize_airline_name, warm_directory_cache
 from .rate_limit import get_blocks, is_blocked, get_block_until, get_block_reason, set_block
 from .selected import get_selected_flight, get_flight_position
 from .api_metrics import get_api_metrics_snapshot, record_api_call
@@ -1118,8 +1118,13 @@ class FlightDashboardUpcomingFlightsSensor(SensorEntity):
             if needs_airline:
                 airline = await get_airline(self.hass, options, airline_code)
                 if airline:
+                    current_name = flight.get("airline_name")
+                    normalized_current_name = normalize_airline_name(airline_code, current_name)
+                    if normalized_current_name and current_name != normalized_current_name:
+                        flight["airline_name"] = normalized_current_name
+                        updates["airline_name"] = normalized_current_name
                     resolved_name = airline.get("name")
-                    if resolved_name and (airline_changed or flight.get("airline_name") != resolved_name):
+                    if resolved_name and not flight.get("airline_name"):
                         flight["airline_name"] = resolved_name
                         updates["airline_name"] = resolved_name
 

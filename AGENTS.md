@@ -26,6 +26,7 @@ This file defines **default instructions for AI coding assistants** working in t
 - **Status persistence**: when a refresh yields meaningful new signal, persist the refreshed manual-flight status back into storage so manual flights do not regress to stale scheduled values after restart/rebuild.
 - **Next refresh UI data**: `status_manager.py` is responsible for surfacing `next_status_check_at`, and `sensor.py` converts that into UI fields such as `next_update_in_min` / `next_update_abs` for cards.
 - **Directory caching**: airport/airline directory data is cached with TTL and refreshed periodically; prefer cached lookups and avoid repeated provider calls.
+- **Airline identity precedence**: flight-level airline names from status/schedule providers are authoritative; directory airline names should only fill blanks, while curated canonical overrides may correct known stale upstream code mappings.
 - **Compatibility mindset**: keep imports/option keys tolerant (see `const.py` “compat superset”) and preserve legacy timestamp fields where required for stored manual flights.
 
 ## Development Workflow

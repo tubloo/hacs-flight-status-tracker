@@ -59,6 +59,10 @@ _CONF_AERODATABOX_APIMARKET_KEY = "aerodatabox_apimarket_key"
 _SOURCE_FLIGHTAPI = "flightapi_iata"
 _SOURCE_AERODATABOX = "aerodatabox"
 _PROVIDER_SOURCES = {_SOURCE_AERODATABOX, _SOURCE_FLIGHTAPI}
+_AIRLINE_CANONICAL_NAME_OVERRIDES: dict[str, str] = {
+    # Curated corrections for stale/reassigned IATA code names in upstream directory data.
+    "QP": "Akasa Air",
+}
 
 def airline_logo_url(iata: str | None) -> str | None:
     """Return a lightweight logo URL for airline IATA code."""
@@ -91,7 +95,11 @@ def _is_provider_source(entry: dict[str, Any] | None) -> bool:
 
 
 def normalize_airline_name(iata: str | None, name: str | None) -> str | None:
-    _ = iata
+    code = str(iata or "").strip().upper()
+    if code:
+        override = _AIRLINE_CANONICAL_NAME_OVERRIDES.get(code)
+        if override:
+            return override
     normalized = str(name or "").strip()
     return normalized or None
 
